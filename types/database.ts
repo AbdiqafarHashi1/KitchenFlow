@@ -11,6 +11,7 @@ export type Database = {
       inventory_movements: { Row: { id: string; restaurant_id: string; inventory_item_id: string; movement_type: "purchase" | "usage" | "waste" | "adjustment"; quantity: number; unit_cost: number | null; total_cost: number | null; note: string | null; created_at: string } };
       purchases: { Row: { id: string; restaurant_id: string; inventory_item_id: string; supplier_name: string | null; quantity: number; unit_cost: number; total_cost: number; purchase_date: string; note: string | null; created_at: string; updated_at: string } };
       daily_sales: { Row: { id: string; restaurant_id: string; sales_date: string; sales_amount: number; source: string | null; notes: string | null; created_at: string; updated_at: string } };
+      daily_expenses: { Row: { id: string; restaurant_id: string; expense_date: string; category: string; amount: number; note: string | null; created_at: string; updated_at: string } };
       restaurants: { Row: { id: string; name: string; slug: string; phone: string | null; address: string | null; currency: string; created_at: string; updated_at: string } };
     };
   };
