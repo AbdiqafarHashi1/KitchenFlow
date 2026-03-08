@@ -1,3 +1,5 @@
+-- 002_role_permissions.sql
+
 -- Normalize and constrain app roles.
 alter table public.admin_profiles
   alter column role set default 'admin';
@@ -14,20 +16,41 @@ alter table public.admin_profiles
 alter table public.admin_profiles
   add constraint admin_profiles_role_check check (role in ('admin', 'data_entry'));
 
+-- Identity / role helpers
+create or replace function public.current_restaurant_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select restaurant_id
+  from public.admin_profiles
+  where id = auth.uid()
+  limit 1
+$$;
+
 create or replace function public.current_user_role()
 returns text
 language sql
 stable
+security definer
+set search_path = public
 as $$
-  select role from public.admin_profiles where id = auth.uid()
+  select role
+  from public.admin_profiles
+  where id = auth.uid()
+  limit 1
 $$;
 
 create or replace function public.is_admin_user()
 returns boolean
 language sql
 stable
+security definer
+set search_path = public
 as $$
-  select public.current_user_role() = 'admin'
+  select coalesce(public.current_user_role() = 'admin', false)
 $$;
 
 -- Keep inventory quantities in sync based on movements.
@@ -42,26 +65,44 @@ declare
   next_qty numeric;
   next_avg numeric;
 begin
-  select * into item_row
+  select *
+  into item_row
   from public.inventory_items
-  where id = new.inventory_item_id and restaurant_id = new.restaurant_id
+  where id = new.inventory_item_id
+    and restaurant_id = new.restaurant_id
   for update;
 
   if not found then
     raise exception 'Inventory item not found for movement %', new.inventory_item_id;
   end if;
 
-  if new.movement_type in ('purchase', 'adjustment', 'usage', 'waste') then
+  if new.movement_type = 'purchase' then
+    next_qty := item_row.current_quantity + new.quantity;
+  elsif new.movement_type = 'usage' then
+    next_qty := item_row.current_quantity - new.quantity;
+  elsif new.movement_type = 'waste' then
+    next_qty := item_row.current_quantity - new.quantity;
+  elsif new.movement_type = 'adjustment' then
+    -- adjustment uses signed quantity: positive adds, negative subtracts
     next_qty := item_row.current_quantity + new.quantity;
   else
     next_qty := item_row.current_quantity;
   end if;
 
-  if new.movement_type = 'purchase' and new.unit_cost is not null and new.quantity > 0 then
+  if next_qty < 0 then
+    raise exception 'Inventory cannot go negative for item %', new.inventory_item_id;
+  end if;
+
+  if new.movement_type = 'purchase'
+     and new.unit_cost is not null
+     and new.quantity > 0 then
     if next_qty = 0 then
       next_avg := 0;
     else
-      next_avg := ((item_row.current_quantity * item_row.average_unit_cost) + (new.quantity * new.unit_cost)) / next_qty;
+      next_avg := (
+        (item_row.current_quantity * item_row.average_unit_cost)
+        + (new.quantity * new.unit_cost)
+      ) / next_qty;
     end if;
   else
     next_avg := item_row.average_unit_cost;
@@ -71,7 +112,8 @@ begin
   set current_quantity = next_qty,
       average_unit_cost = next_avg,
       updated_at = now()
-  where id = new.inventory_item_id and restaurant_id = new.restaurant_id;
+  where id = new.inventory_item_id
+    and restaurant_id = new.restaurant_id;
 
   return new;
 end;
@@ -94,6 +136,48 @@ drop policy if exists "restaurant scope policy inventory_movements" on public.in
 drop policy if exists "restaurant scope policy purchases" on public.purchases;
 drop policy if exists "restaurant scope policy daily_sales" on public.daily_sales;
 
+-- Also drop previous role-permission policies so reruns are safe.
+drop policy if exists "restaurants select scoped" on public.restaurants;
+drop policy if exists "restaurants update admin scoped" on public.restaurants;
+
+drop policy if exists "admin_profiles select own" on public.admin_profiles;
+drop policy if exists "admin_profiles update own" on public.admin_profiles;
+drop policy if exists "admin_profiles update own safe" on public.admin_profiles;
+drop policy if exists "admin_profiles admin manage scoped" on public.admin_profiles;
+
+drop policy if exists "staff select scoped" on public.staff;
+drop policy if exists "staff write admin scoped" on public.staff;
+
+drop policy if exists "staff_advances select scoped" on public.staff_advances;
+drop policy if exists "staff_advances insert scoped" on public.staff_advances;
+drop policy if exists "staff_advances modify admin scoped" on public.staff_advances;
+drop policy if exists "staff_advances delete admin scoped" on public.staff_advances;
+
+drop policy if exists "payroll_records select scoped" on public.payroll_records;
+drop policy if exists "payroll_records select admin scoped" on public.payroll_records;
+drop policy if exists "payroll_records write admin scoped" on public.payroll_records;
+
+drop policy if exists "inventory_categories select scoped" on public.inventory_categories;
+drop policy if exists "inventory_categories write admin scoped" on public.inventory_categories;
+
+drop policy if exists "inventory_items select scoped" on public.inventory_items;
+drop policy if exists "inventory_items write admin scoped" on public.inventory_items;
+
+drop policy if exists "inventory_movements select scoped" on public.inventory_movements;
+drop policy if exists "inventory_movements insert scoped" on public.inventory_movements;
+drop policy if exists "inventory_movements update admin scoped" on public.inventory_movements;
+drop policy if exists "inventory_movements delete admin scoped" on public.inventory_movements;
+
+drop policy if exists "purchases select scoped" on public.purchases;
+drop policy if exists "purchases insert scoped" on public.purchases;
+drop policy if exists "purchases modify admin scoped" on public.purchases;
+drop policy if exists "purchases delete admin scoped" on public.purchases;
+
+drop policy if exists "daily_sales select scoped" on public.daily_sales;
+drop policy if exists "daily_sales insert scoped" on public.daily_sales;
+drop policy if exists "daily_sales modify admin scoped" on public.daily_sales;
+drop policy if exists "daily_sales delete admin scoped" on public.daily_sales;
+
 -- Restaurants
 create policy "restaurants select scoped"
 on public.restaurants for select
@@ -101,18 +185,23 @@ using (id = public.current_restaurant_id());
 
 create policy "restaurants update admin scoped"
 on public.restaurants for update
-using (id = public.current_restaurant_id() and public.is_admin_user())
-with check (id = public.current_restaurant_id() and public.is_admin_user());
+using (
+  id = public.current_restaurant_id()
+  and public.is_admin_user()
+)
+with check (
+  id = public.current_restaurant_id()
+  and public.is_admin_user()
+);
 
 -- Admin profiles
 create policy "admin_profiles select own"
 on public.admin_profiles for select
 using (id = auth.uid());
 
-create policy "admin_profiles update own"
-on public.admin_profiles for update
-using (id = auth.uid())
-with check (id = auth.uid());
+-- Intentionally no broad admin_profiles write policy here.
+-- This avoids recursive policy evaluation and self role escalation.
+-- Manage admin_profiles through privileged flows only when needed.
 
 -- Staff
 create policy "staff select scoped"
@@ -121,8 +210,14 @@ using (restaurant_id = public.current_restaurant_id());
 
 create policy "staff write admin scoped"
 on public.staff for all
-using (restaurant_id = public.current_restaurant_id() and public.is_admin_user())
-with check (restaurant_id = public.current_restaurant_id() and public.is_admin_user());
+using (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+)
+with check (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+);
 
 -- Staff advances
 create policy "staff_advances select scoped"
@@ -138,22 +233,40 @@ with check (
 
 create policy "staff_advances modify admin scoped"
 on public.staff_advances for update
-using (restaurant_id = public.current_restaurant_id() and public.is_admin_user())
-with check (restaurant_id = public.current_restaurant_id() and public.is_admin_user());
+using (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+)
+with check (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+);
 
 create policy "staff_advances delete admin scoped"
 on public.staff_advances for delete
-using (restaurant_id = public.current_restaurant_id() and public.is_admin_user());
+using (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+);
 
--- Payroll
-create policy "payroll_records select scoped"
+-- Payroll: admin only
+create policy "payroll_records select admin scoped"
 on public.payroll_records for select
-using (restaurant_id = public.current_restaurant_id());
+using (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+);
 
 create policy "payroll_records write admin scoped"
 on public.payroll_records for all
-using (restaurant_id = public.current_restaurant_id() and public.is_admin_user())
-with check (restaurant_id = public.current_restaurant_id() and public.is_admin_user());
+using (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+)
+with check (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+);
 
 -- Inventory categories
 create policy "inventory_categories select scoped"
@@ -162,8 +275,14 @@ using (restaurant_id = public.current_restaurant_id());
 
 create policy "inventory_categories write admin scoped"
 on public.inventory_categories for all
-using (restaurant_id = public.current_restaurant_id() and public.is_admin_user())
-with check (restaurant_id = public.current_restaurant_id() and public.is_admin_user());
+using (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+)
+with check (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+);
 
 -- Inventory items
 create policy "inventory_items select scoped"
@@ -172,8 +291,14 @@ using (restaurant_id = public.current_restaurant_id());
 
 create policy "inventory_items write admin scoped"
 on public.inventory_items for all
-using (restaurant_id = public.current_restaurant_id() and public.is_admin_user())
-with check (restaurant_id = public.current_restaurant_id() and public.is_admin_user());
+using (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+)
+with check (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+);
 
 -- Inventory movements
 create policy "inventory_movements select scoped"
@@ -186,18 +311,30 @@ with check (
   restaurant_id = public.current_restaurant_id()
   and (
     public.is_admin_user()
-    or (public.current_user_role() = 'data_entry' and movement_type = 'purchase')
+    or (
+      public.current_user_role() = 'data_entry'
+      and movement_type = 'purchase'
+    )
   )
 );
 
 create policy "inventory_movements update admin scoped"
 on public.inventory_movements for update
-using (restaurant_id = public.current_restaurant_id() and public.is_admin_user())
-with check (restaurant_id = public.current_restaurant_id() and public.is_admin_user());
+using (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+)
+with check (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+);
 
 create policy "inventory_movements delete admin scoped"
 on public.inventory_movements for delete
-using (restaurant_id = public.current_restaurant_id() and public.is_admin_user());
+using (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+);
 
 -- Purchases
 create policy "purchases select scoped"
@@ -213,12 +350,21 @@ with check (
 
 create policy "purchases modify admin scoped"
 on public.purchases for update
-using (restaurant_id = public.current_restaurant_id() and public.is_admin_user())
-with check (restaurant_id = public.current_restaurant_id() and public.is_admin_user());
+using (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+)
+with check (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+);
 
 create policy "purchases delete admin scoped"
 on public.purchases for delete
-using (restaurant_id = public.current_restaurant_id() and public.is_admin_user());
+using (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+);
 
 -- Daily sales
 create policy "daily_sales select scoped"
@@ -234,9 +380,18 @@ with check (
 
 create policy "daily_sales modify admin scoped"
 on public.daily_sales for update
-using (restaurant_id = public.current_restaurant_id() and public.is_admin_user())
-with check (restaurant_id = public.current_restaurant_id() and public.is_admin_user());
+using (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+)
+with check (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+);
 
 create policy "daily_sales delete admin scoped"
 on public.daily_sales for delete
-using (restaurant_id = public.current_restaurant_id() and public.is_admin_user());
+using (
+  restaurant_id = public.current_restaurant_id()
+  and public.is_admin_user()
+);
