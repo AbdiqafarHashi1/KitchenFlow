@@ -7,33 +7,88 @@ import { getCurrentRestaurantId } from "@/lib/data";
 import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
 
-export default async function StaffPage() {
+function getMonthRange(period: string) {
+  const [year, month] = period.split("-").map(Number);
+  const start = new Date(year, month - 1, 1);
+  const end = new Date(year, month, 0);
+  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
+}
+
+export default async function StaffPage({ searchParams }: { searchParams?: { period?: string } }) {
   const supabase = await createClient();
   const restaurantId = await getCurrentRestaurantId();
-  const { data: staff } = await supabase.from("staff").select("*").eq("restaurant_id", restaurantId).order("full_name");
+  const currentPeriod = searchParams?.period ?? new Date().toISOString().slice(0, 7);
+  const today = new Date().toISOString().slice(0, 10);
+  const { start, end } = getMonthRange(currentPeriod);
+
+  const [{ data: staff }, { data: advances }] = await Promise.all([
+    supabase.from("staff").select("*").eq("restaurant_id", restaurantId).order("full_name"),
+    supabase.from("staff_advances").select("staff_id,amount").eq("restaurant_id", restaurantId).gte("advance_date", start).lte("advance_date", end)
+  ]);
+
+  const advancesByStaff = new Map<string, number>();
+  for (const advance of advances ?? []) {
+    advancesByStaff.set(advance.staff_id, (advancesByStaff.get(advance.staff_id) ?? 0) + advance.amount);
+  }
 
   return (
-    <div className="space-y-4">
-      <form action={addStaff} className="card grid gap-2 p-4 md:grid-cols-6">
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-semibold">Staff & Payroll Operations</h2>
+          <p className="text-sm text-muted">Manage team records and track advances/net payable by pay period.</p>
+        </div>
+        <form className="flex items-end gap-2">
+          <div>
+            <label className="mb-1 block text-xs text-muted">Pay period month</label>
+            <Input name="period" type="month" defaultValue={currentPeriod} />
+          </div>
+          <Button type="submit" variant="outline">Load Period</Button>
+        </form>
+      </div>
+
+      <form action={addStaff} className="card grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-6">
+        <p className="text-xs uppercase tracking-wide text-muted md:col-span-2 xl:col-span-6">Quick add staff member</p>
         <Input name="full_name" placeholder="Full name" required />
         <Input name="role" placeholder="Role" required />
         <Input name="phone" placeholder="Phone" />
-        <select name="salary_type" className="rounded-xl border border-border bg-black/20 px-3 text-sm"><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="daily">Daily</option></select>
+        <select name="salary_type" className="h-10 rounded-xl border border-border bg-black/20 px-3 text-sm"><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="daily">Daily</option></select>
         <Input name="base_salary" type="number" step="0.01" placeholder="Base salary" required />
-        <Button>Add Staff</Button>
+        <div className="flex items-end"><Button className="w-full">Add Staff</Button></div>
       </form>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {staff?.map((s) => (
-          <div key={s.id} className="card space-y-3 p-4">
-            <div className="flex items-start justify-between"><div><h2 className="font-semibold">{s.full_name}</h2><p className="text-sm text-muted">{s.role} • {s.phone}</p></div><span className="text-xs text-muted">{s.is_active ? "Active" : "Inactive"}</span></div>
-            <p className="text-sm">Salary: {s.salary_type} {formatCurrency(s.base_salary)}</p>
-            <div className="flex gap-2">
-              <Link href={`/staff/${s.id}`}><Button size="sm" variant="outline">View Profile</Button></Link>
-              <form action={addAdvance} className="flex flex-wrap items-center gap-2"><input type="hidden" name="staff_id" value={s.id} /><input type="hidden" name="advance_date" value={new Date().toISOString().slice(0, 10)} /><Input name="amount" type="number" step="0.01" placeholder="Advance" className="h-9 w-28" required /><input type="hidden" name="note" value="Quick advance" /><Button size="sm">Add Advance</Button></form>
-            </div>
-          </div>
-        ))}
+      <div className="card overflow-hidden">
+        <div className="border-b border-border p-4"><h3 className="font-medium">Staff roster ({start} to {end})</h3></div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-black/20 text-left text-xs uppercase tracking-wide text-muted">
+              <tr><th className="px-4 py-3">Staff</th><th className="px-4 py-3">Salary</th><th className="px-4 py-3">Advances this period</th><th className="px-4 py-3">Net payable (simple)</th><th className="px-4 py-3">Quick advance</th><th className="px-4 py-3">Actions</th></tr>
+            </thead>
+            <tbody>
+              {staff?.map((s) => {
+                const advancesTotal = advancesByStaff.get(s.id) ?? 0;
+                return (
+                  <tr key={s.id} className="border-t border-border/60 text-muted">
+                    <td className="px-4 py-3"><p className="text-foreground">{s.full_name}</p><p className="text-xs">{s.role} • {s.phone ?? "No phone"}</p></td>
+                    <td className="px-4 py-3">{s.salary_type} {formatCurrency(s.base_salary)}</td>
+                    <td className="px-4 py-3">{formatCurrency(advancesTotal)}</td>
+                    <td className="px-4 py-3 text-foreground">{formatCurrency(Math.max(s.base_salary - advancesTotal, 0))}</td>
+                    <td className="px-4 py-3">
+                      <form action={addAdvance} className="flex items-center gap-2">
+                        <input type="hidden" name="staff_id" value={s.id} />
+                        <input type="hidden" name="advance_date" value={today} />
+                        <Input name="amount" type="number" step="0.01" placeholder="0.00" className="h-8 w-24" required />
+                        <input type="hidden" name="note" value="Quick advance" />
+                        <Button size="sm">Add</Button>
+                      </form>
+                    </td>
+                    <td className="px-4 py-3"><Link href={`/staff/${s.id}`}><Button size="sm" variant="outline">Open</Button></Link></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
