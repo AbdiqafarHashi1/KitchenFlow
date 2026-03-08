@@ -3,9 +3,10 @@ import { addAdvance } from "@/actions/operations";
 import { addStaff } from "@/actions/admin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getCurrentRestaurantId } from "@/lib/data";
+import { getCurrentRestaurantId, getCurrentUserRole } from "@/lib/data";
 import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
+import { hasPermission } from "@/lib/permissions";
 
 function getMonthRange(period: string) {
   const [year, month] = period.split("-").map(Number);
@@ -16,6 +17,8 @@ function getMonthRange(period: string) {
 
 export default async function StaffPage({ searchParams }: { searchParams?: { period?: string } }) {
   const supabase = await createClient();
+  const role = await getCurrentUserRole();
+  const canManageStaff = hasPermission(role, "staff:manage");
   const restaurantId = await getCurrentRestaurantId();
   const currentPeriod = searchParams?.period ?? new Date().toISOString().slice(0, 7);
   const today = new Date().toISOString().slice(0, 10);
@@ -47,6 +50,7 @@ export default async function StaffPage({ searchParams }: { searchParams?: { per
         </form>
       </div>
 
+      {canManageStaff ? (
       <form action={addStaff} className="card grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-6">
         <p className="text-xs uppercase tracking-wide text-muted md:col-span-2 xl:col-span-6">Quick add staff member</p>
         <Input name="full_name" placeholder="Full name" required />
@@ -56,6 +60,9 @@ export default async function StaffPage({ searchParams }: { searchParams?: { per
         <Input name="base_salary" type="number" step="0.01" placeholder="Base salary" required />
         <div className="flex items-end"><Button className="w-full">Add Staff</Button></div>
       </form>
+      ) : (
+        <div className="card p-4 text-sm text-muted">Staff records are view-only. You can still capture advances.</div>
+      )}
 
       <div className="card overflow-hidden">
         <div className="border-b border-border p-4"><h3 className="font-medium">Staff roster ({start} to {end})</h3></div>

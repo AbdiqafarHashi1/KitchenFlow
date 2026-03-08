@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase-server";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { signOut } from "@/actions/auth";
+import { getCurrentUserRole } from "@/lib/data";
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -12,9 +13,11 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     redirect("/login");
   }
 
+  const role = await getCurrentUserRole();
+
   return (
     <div className="min-h-screen md:flex">
-      <Sidebar />
+      <Sidebar role={role} />
       <main className="flex-1 p-4 md:p-8">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Operations Dashboard</h1>
