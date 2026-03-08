@@ -12,21 +12,25 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
   const supabase = await createClient();
   const restaurantId = await getCurrentRestaurantId();
   const selectedDate = searchParams?.date ?? new Date().toISOString().slice(0, 10);
+  const rangeStart = `${selectedDate}T00:00:00.000Z`;
+  const rangeEnd = `${selectedDate}T23:59:59.999Z`;
 
-  const [{ data: sales }, { data: purchases }, { data: advances }, { data: lowStock }, { data: staff }, { data: payroll }] = await Promise.all([
+  const [{ data: sales }, { data: purchases }, { data: advances }, { data: expenses }, { data: usage }, { data: lowStock }] = await Promise.all([
     supabase.from("daily_sales").select("sales_amount").eq("restaurant_id", restaurantId).eq("sales_date", selectedDate),
     supabase.from("purchases").select("total_cost").eq("restaurant_id", restaurantId).eq("purchase_date", selectedDate),
     supabase.from("staff_advances").select("amount").eq("restaurant_id", restaurantId).eq("advance_date", selectedDate),
+    supabase.from("daily_expenses").select("amount").eq("restaurant_id", restaurantId).eq("expense_date", selectedDate),
+    supabase.from("inventory_movements").select("total_cost").eq("restaurant_id", restaurantId).eq("movement_type", "usage").gte("created_at", rangeStart).lte("created_at", rangeEnd),
     supabase.from("inventory_items").select("id").eq("restaurant_id", restaurantId).filter("current_quantity", "lte", "min_quantity"),
-    supabase.from("staff").select("id").eq("restaurant_id", restaurantId).eq("is_active", true),
-    supabase.from("payroll_records").select("net_payable").eq("restaurant_id", restaurantId).eq("payment_status", "pending")
   ]);
 
   const todaySales = (sales ?? []).reduce((a, c) => a + c.sales_amount, 0);
   const todayPurchases = (purchases ?? []).reduce((a, c) => a + c.total_cost, 0);
   const advancesToday = (advances ?? []).reduce((a, c) => a + c.amount, 0);
-  const payrollSnapshot = (payroll ?? []).reduce((a, c) => a + c.net_payable, 0);
-  const gross = todaySales - todayPurchases - payrollSnapshot;
+  const expensesToday = (expenses ?? []).reduce((a, c) => a + c.amount, 0);
+  const usageCostToday = (usage ?? []).reduce((a, c) => a + (c.total_cost ?? 0), 0);
+  const dailyCashResult = todaySales - todayPurchases - advancesToday - expensesToday;
+  const dailyGrossFromUsage = todaySales - usageCostToday;
 
   const [{ data: recentPurchases }, { data: recentAdvances }, { data: movements }, { data: lowAlerts }] = await Promise.all([
     supabase.from("purchases").select("id,supplier_name,total_cost,purchase_date,inventory_items(name)").eq("restaurant_id", restaurantId).order("created_at", { ascending: false }).limit(8),
@@ -52,15 +56,24 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
         <Card title="Today Sales" value={formatCurrency(todaySales)} />
         <Card title="Today Purchases" value={formatCurrency(todayPurchases)} />
         <Card title="Advances Today" value={formatCurrency(advancesToday)} />
+        <Card title="Expenses Today" value={formatCurrency(expensesToday)} />
+        <Card title="Usage Cost Today" value={formatCurrency(usageCostToday)} />
         <Card title="Low Stock Items" value={String(lowStock?.length ?? 0)} />
-        <Card title="Active Staff" value={String(staff?.length ?? 0)} />
-        <Card title="Payroll Snapshot" value={formatCurrency(payrollSnapshot)} />
+        <Card title="Daily Cash Result" value={formatCurrency(dailyCashResult)} />
+        <Card title="Daily Gross from Usage" value={formatCurrency(dailyGrossFromUsage)} />
       </div>
 
-      <div className="card p-4">
-        <p className="text-sm text-muted">Gross Profit Estimate ({selectedDate})</p>
-        <p className="mt-2 text-3xl font-semibold text-accent">{formatCurrency(gross)}</p>
-        <p className="text-xs text-muted">Sales - Purchases - Pending payroll.</p>
+      <div className="card grid gap-4 p-4 md:grid-cols-2">
+        <div>
+          <p className="text-sm text-muted">Daily Cash Result ({selectedDate})</p>
+          <p className="mt-2 text-3xl font-semibold text-accent">{formatCurrency(dailyCashResult)}</p>
+          <p className="text-xs text-muted">Sales - Purchases - Advances - Daily expenses.</p>
+        </div>
+        <div>
+          <p className="text-sm text-muted">Daily Gross from Usage ({selectedDate})</p>
+          <p className="mt-2 text-3xl font-semibold text-accent">{formatCurrency(dailyGrossFromUsage)}</p>
+          <p className="text-xs text-muted">Sales - Usage cost (consumed stock only).</p>
+        </div>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">

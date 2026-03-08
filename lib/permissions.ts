@@ -10,6 +10,8 @@ export type AppPermission =
   | "inventory:manage"
   | "inventory:adjust"
   | "purchases:create"
+  | "usage:create"
+  | "expenses:create"
   | "sales:create"
   | "reports:view"
   | "settings:manage";
@@ -24,11 +26,22 @@ const ROLE_PERMISSIONS: Record<AppRole, AppPermission[]> = {
     "inventory:manage",
     "inventory:adjust",
     "purchases:create",
+    "usage:create",
+    "expenses:create",
     "sales:create",
     "reports:view",
     "settings:manage"
   ],
-  data_entry: ["dashboard:view", "staff:view", "staff_advances:create", "inventory:view", "purchases:create", "sales:create"]
+  data_entry: [
+    "dashboard:view",
+    "staff:view",
+    "staff_advances:create",
+    "inventory:view",
+    "purchases:create",
+    "usage:create",
+    "expenses:create",
+    "sales:create"
+  ]
 };
 
 export function normalizeRole(role?: string | null): AppRole {
