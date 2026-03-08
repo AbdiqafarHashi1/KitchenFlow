@@ -1,9 +1,10 @@
 import { addAdvance } from "@/actions/operations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getCurrentRestaurantId } from "@/lib/data";
+import { getCurrentRestaurantId, getCurrentUserRole } from "@/lib/data";
 import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
+import { hasPermission } from "@/lib/permissions";
 
 function getMonthRange(period: string) {
   const [year, month] = period.split("-").map(Number);
@@ -14,6 +15,8 @@ function getMonthRange(period: string) {
 
 export default async function StaffDetailPage({ params, searchParams }: { params: { id: string }; searchParams?: { period?: string } }) {
   const supabase = await createClient();
+  const role = await getCurrentUserRole();
+  const canViewPayroll = hasPermission(role, "staff:manage");
   const restaurantId = await getCurrentRestaurantId();
   const currentPeriod = searchParams?.period ?? new Date().toISOString().slice(0, 7);
   const { start, end } = getMonthRange(currentPeriod);
@@ -80,6 +83,7 @@ export default async function StaffDetailPage({ params, searchParams }: { params
         </div>
       </div>
 
+      {canViewPayroll ? (
       <div className="card p-4">
         <h2 className="mb-3 text-lg font-semibold">Payroll history</h2>
         <div className="overflow-x-auto">
@@ -99,6 +103,7 @@ export default async function StaffDetailPage({ params, searchParams }: { params
           </table>
         </div>
       </div>
+      ) : null}
     </div>
   );
 }

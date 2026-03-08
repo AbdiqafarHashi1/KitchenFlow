@@ -3,12 +3,16 @@ import { addInventoryItem } from "@/actions/admin";
 import { adjustInventory } from "@/actions/operations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getCurrentRestaurantId } from "@/lib/data";
+import { getCurrentRestaurantId, getCurrentUserRole } from "@/lib/data";
 import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
+import { hasPermission } from "@/lib/permissions";
 
 export default async function InventoryPage() {
   const supabase = await createClient();
+  const role = await getCurrentUserRole();
+  const canManageInventory = hasPermission(role, "inventory:manage");
+  const canAdjustInventory = hasPermission(role, "inventory:adjust");
   const restaurantId = await getCurrentRestaurantId();
   const [{ data: items }, { data: categories }] = await Promise.all([
     supabase.from("inventory_items").select("*, inventory_categories(name)").eq("restaurant_id", restaurantId).order("name"),
@@ -22,6 +26,7 @@ export default async function InventoryPage() {
         <p className="text-sm text-muted">Manage master items, monitor low stock, and perform quick adjustments when needed.</p>
       </div>
 
+      {canManageInventory ? (
       <form action={addInventoryItem} className="card grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
         <p className="text-xs uppercase tracking-wide text-muted md:col-span-2 xl:col-span-4">Add new inventory item</p>
         <Input name="name" placeholder="Item name" required />
@@ -32,6 +37,9 @@ export default async function InventoryPage() {
         <Input name="average_unit_cost" type="number" step="0.01" placeholder="Avg cost" required />
         <div className="flex items-end"><Button className="w-full">Add Item</Button></div>
       </form>
+      ) : (
+        <div className="card p-4 text-sm text-muted">Inventory items are view-only for your role.</div>
+      )}
 
       <div className="card overflow-hidden">
         <div className="border-b border-border p-4"><h3 className="font-medium">Inventory listing</h3></div>
@@ -56,13 +64,15 @@ export default async function InventoryPage() {
                     <td className={`px-4 py-3 text-xs ${low ? "text-red-300" : "text-emerald-300"}`}>{low ? "Low stock" : "Healthy"}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Link href={`/inventory/${i.id}`}><Button size="sm" variant="outline">View / Edit</Button></Link>
+                        <Link href={`/inventory/${i.id}`}><Button size="sm" variant="outline">{canManageInventory ? "View / Edit" : "View"}</Button></Link>
+                        {canAdjustInventory ? (
                         <form action={adjustInventory} className="flex items-center gap-2">
                           <input type="hidden" name="inventory_item_id" value={i.id} />
                           <Input name="quantity" type="number" step="0.01" placeholder="+/-" className="h-8 w-20" required />
                           <input type="hidden" name="note" value="Quick adjustment" />
                           <Button size="sm">Adjust</Button>
                         </form>
+                        ) : null}
                       </div>
                     </td>
                   </tr>

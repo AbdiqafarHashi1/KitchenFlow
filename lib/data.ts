@@ -1,19 +1,11 @@
-import { createClient } from "@/lib/supabase-server";
+import { getCurrentUserContext } from "@/lib/permissions";
 
 export async function getCurrentRestaurantId() {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) throw new Error("Unauthorized");
+  const context = await getCurrentUserContext();
+  return context.restaurantId;
+}
 
-  const { data, error } = await supabase
-    .from("admin_profiles")
-    .select("restaurant_id")
-    .eq("id", userData.user.id)
-    .single();
-
-  if (error || !data?.restaurant_id) {
-    throw new Error("Admin profile not linked to restaurant");
-  }
-
-  return data.restaurant_id;
+export async function getCurrentUserRole() {
+  const context = await getCurrentUserContext();
+  return context.role;
 }
