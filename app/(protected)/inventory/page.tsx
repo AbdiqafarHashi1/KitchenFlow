@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { addInventoryItem } from "@/actions/admin";
+import { adjustInventory } from "@/actions/operations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getCurrentRestaurantId } from "@/lib/data";
@@ -15,26 +16,61 @@ export default async function InventoryPage() {
   ]);
 
   return (
-    <div className="space-y-4">
-      <form action={addInventoryItem} className="card grid gap-2 p-4 md:grid-cols-7">
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-semibold">Inventory Stock Control</h2>
+        <p className="text-sm text-muted">Manage master items, monitor low stock, and perform quick adjustments when needed.</p>
+      </div>
+
+      <form action={addInventoryItem} className="card grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+        <p className="text-xs uppercase tracking-wide text-muted md:col-span-2 xl:col-span-4">Add new inventory item</p>
         <Input name="name" placeholder="Item name" required />
-        <select name="category_id" className="rounded-xl border border-border bg-black/20 px-3 text-sm"><option value="">Category</option>{categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+        <select name="category_id" className="h-10 rounded-xl border border-border bg-black/20 px-3 text-sm"><option value="">Category</option>{categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
         <Input name="unit" placeholder="Unit (kg, pcs...)" required />
         <Input name="current_quantity" type="number" step="0.01" placeholder="Current qty" required />
         <Input name="min_quantity" type="number" step="0.01" placeholder="Min qty" required />
         <Input name="average_unit_cost" type="number" step="0.01" placeholder="Avg cost" required />
-        <Button>Add Item</Button>
+        <div className="flex items-end"><Button className="w-full">Add Item</Button></div>
       </form>
-      <div className="grid gap-4 lg:grid-cols-2">
-        {items?.map((i) => (
-          <Link key={i.id} href={`/inventory/${i.id}`} className="card block p-4">
-            <h2 className="font-semibold">{i.name}</h2>
-            <p className="text-sm text-muted">{(i as any).inventory_categories?.name ?? "Uncategorized"} • {i.unit}</p>
-            <p className="text-sm">Stock: {i.current_quantity} (min {i.min_quantity})</p>
-            <p className="text-sm">Avg cost: {formatCurrency(i.average_unit_cost)}</p>
-            {i.current_quantity <= i.min_quantity && <p className="mt-1 text-xs text-red-400">Low stock</p>}
-          </Link>
-        ))}
+
+      <div className="card overflow-hidden">
+        <div className="border-b border-border p-4"><h3 className="font-medium">Inventory listing</h3></div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-black/20 text-left text-xs uppercase tracking-wide text-muted">
+              <tr>
+                <th className="px-4 py-3">Item</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Unit</th><th className="px-4 py-3">Current qty</th><th className="px-4 py-3">Min qty</th><th className="px-4 py-3">Avg cost</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items?.map((i) => {
+                const low = i.current_quantity <= i.min_quantity;
+                return (
+                  <tr key={i.id} className={`border-t border-border/60 ${low ? "bg-red-950/20" : ""}`}>
+                    <td className="px-4 py-3 text-foreground">{i.name}</td>
+                    <td className="px-4 py-3 text-muted">{(i as { inventory_categories?: { name?: string } }).inventory_categories?.name ?? "Uncategorized"}</td>
+                    <td className="px-4 py-3 text-muted">{i.unit}</td>
+                    <td className="px-4 py-3 text-foreground">{i.current_quantity}</td>
+                    <td className="px-4 py-3 text-muted">{i.min_quantity}</td>
+                    <td className="px-4 py-3 text-muted">{formatCurrency(i.average_unit_cost)}</td>
+                    <td className={`px-4 py-3 text-xs ${low ? "text-red-300" : "text-emerald-300"}`}>{low ? "Low stock" : "Healthy"}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link href={`/inventory/${i.id}`}><Button size="sm" variant="outline">View / Edit</Button></Link>
+                        <form action={adjustInventory} className="flex items-center gap-2">
+                          <input type="hidden" name="inventory_item_id" value={i.id} />
+                          <Input name="quantity" type="number" step="0.01" placeholder="+/-" className="h-8 w-20" required />
+                          <input type="hidden" name="note" value="Quick adjustment" />
+                          <Button size="sm">Adjust</Button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
