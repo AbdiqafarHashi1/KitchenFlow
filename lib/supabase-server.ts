@@ -11,10 +11,18 @@ export async function createClient() {
         return cookieStore.get(name)?.value;
       },
       set(name: string, value: string, options: Record<string, unknown>) {
-        cookieStore.set({ name, value, ...options });
+        try {
+          cookieStore.set({ name, value, ...options });
+        } catch {
+          // Server components cannot always mutate cookies; middleware handles refresh persistence.
+        }
       },
       remove(name: string, options: Record<string, unknown>) {
-        cookieStore.set({ name, value: "", ...options });
+        try {
+          cookieStore.set({ name, value: "", ...options });
+        } catch {
+          // Server components cannot always mutate cookies; middleware handles refresh persistence.
+        }
       }
     }
   });
