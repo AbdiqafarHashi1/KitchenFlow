@@ -1,4 +1,5 @@
 import { addSale } from "@/actions/operations";
+import { ActionForm } from "@/components/forms/action-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getCurrentRestaurantId } from "@/lib/data";
@@ -34,7 +35,7 @@ export default async function SalesPage({ searchParams }: { searchParams?: { dat
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[2fr,1fr]">
-        <form action={addSale} className="card grid gap-3 p-4 md:grid-cols-2">
+        <ActionForm action={addSale} keepFields={["sales_date"]} className="card grid gap-3 p-4 md:grid-cols-2">
           <input type="hidden" name="sales_date" value={selectedDate} />
           <div className="md:col-span-2">
             <p className="text-xs uppercase tracking-wide text-muted">Sales entry for {selectedDate}</p>
@@ -54,7 +55,7 @@ export default async function SalesPage({ searchParams }: { searchParams?: { dat
           <div className="md:col-span-2">
             <Button className="w-full md:w-auto">Add Sales Entry</Button>
           </div>
-        </form>
+        </ActionForm>
         <div className="card space-y-2 p-4">
           <p className="text-xs uppercase tracking-wide text-muted">Selected day total</p>
           <p className="text-3xl font-semibold text-accent">{formatCurrency(selectedTotal)}</p>

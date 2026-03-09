@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Boxes, ChartNoAxesCombined, LayoutDashboard, ReceiptText, Settings, ShoppingBasket, Users } from "lucide-react";
+import { Boxes, ChartNoAxesCombined, LayoutDashboard, ReceiptText, Settings, ShoppingBasket, Users, ClipboardCheck } from "lucide-react";
 import type { AppRole } from "@/lib/permissions";
 
 const items = [
@@ -8,8 +8,9 @@ const items = [
   { href: "/inventory", label: "Inventory", icon: Boxes, roles: ["admin", "data_entry"] as AppRole[] },
   { href: "/purchases", label: "Purchases", icon: ShoppingBasket, roles: ["admin", "data_entry"] as AppRole[] },
   { href: "/sales", label: "Sales", icon: ReceiptText, roles: ["admin", "data_entry"] as AppRole[] },
+  { href: "/usage", label: "Closing Stock", icon: ClipboardCheck, roles: ["admin", "data_entry"] as AppRole[] },
   { href: "/reports", label: "Reports", icon: ChartNoAxesCombined, roles: ["admin"] as AppRole[] },
-  { href: "/settings", label: "Settings", icon: Settings, roles: ["admin"] as AppRole[] }
+  { href: "/settings", label: "Settings", icon: Settings, roles: ["admin"] as AppRole[] },
 ];
 
 export function Sidebar({ role }: { role: AppRole }) {

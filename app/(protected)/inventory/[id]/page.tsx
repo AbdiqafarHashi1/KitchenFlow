@@ -1,4 +1,5 @@
 import { adjustInventory } from "@/actions/operations";
+import { ActionForm } from "@/components/forms/action-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getCurrentRestaurantId, getCurrentUserRole } from "@/lib/data";
@@ -38,23 +39,27 @@ export default async function InventoryDetailPage({ params }: { params: { id: st
         </div>
       </div>
 
-      {canAdjustInventory ? (
-      <form action={adjustInventory} className="card grid gap-3 p-4 md:grid-cols-4">
-        <input type="hidden" name="inventory_item_id" value={item.id} />
-        <div>
-          <label className="mb-1 block text-xs text-muted">Adjustment quantity (+/-)</label>
-          <Input name="quantity" type="number" step="0.01" placeholder="0.00" required />
-        </div>
-        <div className="md:col-span-2">
-          <label className="mb-1 block text-xs text-muted">Reason</label>
-          <Input name="note" placeholder="Spoilage, count correction, transfer..." />
-        </div>
-        <div className="flex items-end"><Button className="w-full">Apply Stock Adjustment</Button></div>
-      </form>
-      ) : (
-        <div className="card p-4 text-sm text-muted">Inventory adjustments are restricted for your role.</div>
-      )}
-
+{canAdjustInventory ? (
+  <ActionForm action={adjustInventory} className="card grid gap-3 p-4 md:grid-cols-4">
+    <input type="hidden" name="inventory_item_id" value={item.id} />
+    <div>
+      <label className="mb-1 block text-xs text-muted">Adjustment quantity (+/-)</label>
+      <Input name="quantity" type="number" step="0.01" placeholder="0.00" required />
+    </div>
+    <div className="md:col-span-2">
+      <label className="mb-1 block text-xs text-muted">Reason</label>
+      <Input name="note" placeholder="Spoilage, count correction, transfer..." />
+    </div>
+    <div className="flex items-end">
+      <Button className="w-full">Apply Stock Adjustment</Button>
+    </div>
+  </ActionForm>
+) : (
+  <div className="card p-4 text-sm text-muted">
+    Inventory adjustments are restricted for your role.
+  </div>
+)}
+      
       <div className="card overflow-hidden">
         <div className="border-b border-border p-4"><h3 className="font-medium">Movement history</h3></div>
         <div className="overflow-x-auto">
