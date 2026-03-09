@@ -28,18 +28,22 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { s
   const start = searchParams?.start ?? presetRange.start;
   const end = searchParams?.end ?? presetRange.end;
 
-  const [{ data: sales }, { data: purchases }, { data: payroll }, { data: lowStock }, { data: items }] = await Promise.all([
+  const [{ data: sales }, { data: purchases }, { data: payroll }, { data: lowStock }, { data: items }, { data: usage }, { data: counts }] = await Promise.all([
     supabase.from("daily_sales").select("sales_amount").eq("restaurant_id", restaurantId).gte("sales_date", start).lte("sales_date", end),
     supabase.from("purchases").select("total_cost").eq("restaurant_id", restaurantId).gte("purchase_date", start).lte("purchase_date", end),
     supabase.from("payroll_records").select("net_payable").eq("restaurant_id", restaurantId).gte("period_end", start).lte("period_end", end),
     supabase.from("inventory_items").select("name,current_quantity,min_quantity").eq("restaurant_id", restaurantId).filter("current_quantity", "lte", "min_quantity"),
-    supabase.from("inventory_items").select("current_quantity,average_unit_cost").eq("restaurant_id", restaurantId)
+    supabase.from("inventory_items").select("current_quantity,average_unit_cost").eq("restaurant_id", restaurantId),
+    supabase.from("inventory_movements").select("total_cost,created_at").eq("restaurant_id", restaurantId).eq("movement_type", "usage").gte("created_at", `${start}T00:00:00`).lt("created_at", `${end}T23:59:59`),
+    supabase.from("daily_stock_counts").select("count_date").eq("restaurant_id", restaurantId).gte("count_date", start).lte("count_date", end)
   ]);
 
   const salesTotal = (sales ?? []).reduce((a, b) => a + b.sales_amount, 0);
   const purchaseTotal = (purchases ?? []).reduce((a, b) => a + b.total_cost, 0);
   const payrollTotal = (payroll ?? []).reduce((a, b) => a + b.net_payable, 0);
   const inventoryValue = (items ?? []).reduce((a, b) => a + b.current_quantity * b.average_unit_cost, 0);
+  const usageCostTotal = (usage ?? []).reduce((a, b) => a + (b.total_cost ?? 0), 0);
+  const hasClosingCounts = (counts?.length ?? 0) > 0;
 
   return (
     <div className="space-y-6">
@@ -65,7 +69,8 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { s
         <div className="card p-4"><p className="text-sm text-muted">Sales Total</p><p className="mt-2 text-2xl text-accent">{formatCurrency(salesTotal)}</p></div>
         <div className="card p-4"><p className="text-sm text-muted">Purchases Total</p><p className="mt-2 text-2xl text-accent">{formatCurrency(purchaseTotal)}</p></div>
         <div className="card p-4"><p className="text-sm text-muted">Payroll Total</p><p className="mt-2 text-2xl text-accent">{formatCurrency(payrollTotal)}</p></div>
-        <div className="card p-4"><p className="text-sm text-muted">Gross Profit Estimate</p><p className="mt-2 text-2xl text-accent">{formatCurrency(salesTotal - purchaseTotal - payrollTotal)}</p></div>
+        <div className="card p-4"><p className="text-sm text-muted">Gross (cash style)</p><p className="mt-2 text-2xl text-accent">{formatCurrency(salesTotal - purchaseTotal)}</p></div>
+        <div className="card p-4"><p className="text-sm text-muted">Daily Gross from Usage</p>{hasClosingCounts ? <p className="mt-2 text-2xl text-accent">{formatCurrency(salesTotal - usageCostTotal)}</p> : <p className="mt-2 text-sm text-amber-300">Daily gross from usage pending closing stock count.</p>}</div>
         <div className="card p-4"><p className="text-sm text-muted">Low Stock Items</p><p className="mt-2 text-2xl text-accent">{lowStock?.length ?? 0}</p></div>
         <div className="card p-4"><p className="text-sm text-muted">Inventory Valuation Estimate</p><p className="mt-2 text-2xl text-accent">{formatCurrency(inventoryValue)}</p></div>
       </div>

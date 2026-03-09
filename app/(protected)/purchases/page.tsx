@@ -1,6 +1,8 @@
 import { addPurchase } from "@/actions/operations";
+import { ActionForm } from "@/components/forms/action-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { getCurrentRestaurantId } from "@/lib/data";
 import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
@@ -41,19 +43,19 @@ export default async function PurchasesPage({ searchParams }: { searchParams?: {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[2fr,1fr]">
-        <form action={addPurchase} className="card grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+        <ActionForm action={addPurchase} keepFields={["purchase_date"]} className="card grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
           <input type="hidden" name="purchase_date" value={selectedDate} />
           <div className="md:col-span-2 xl:col-span-3">
             <p className="text-xs uppercase tracking-wide text-muted">Quick purchase entry for {selectedDate}</p>
           </div>
           <div>
             <label className="mb-1 block text-xs text-muted">Inventory item</label>
-            <select name="inventory_item_id" className="h-10 w-full rounded-xl border border-border bg-black/20 px-3 text-sm" required>
+            <Select name="inventory_item_id" required>
               <option value="">Select item</option>
               {items?.map((i) => (
                 <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>
               ))}
-            </select>
+            </Select>
           </div>
           <div>
             <label className="mb-1 block text-xs text-muted">Supplier</label>
@@ -77,7 +79,7 @@ export default async function PurchasesPage({ searchParams }: { searchParams?: {
           <div className="flex items-end">
             <Button className="w-full">Save Purchase</Button>
           </div>
-        </form>
+        </ActionForm>
 
         <div className="card space-y-2 p-4">
           <p className="text-xs uppercase tracking-wide text-muted">Selected day summary</p>

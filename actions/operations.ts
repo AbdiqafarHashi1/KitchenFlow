@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase-server";
 import { getCurrentRestaurantId } from "@/lib/data";
+import { calculateUsage } from "@/lib/usage";
 
 const num = z.coerce.number().nonnegative();
 
@@ -83,4 +84,88 @@ export async function adjustInventory(formData: FormData) {
   revalidatePath(`/inventory/${parsed.data.inventory_item_id}`);
   revalidatePath("/dashboard");
   return { success: "Inventory adjusted" };
+}
+
+export async function saveDailyStockCount(formData: FormData) {
+  const schema = z.object({
+    inventory_item_id: z.string().uuid(),
+    count_date: z.string(),
+    opening_quantity: num,
+    purchases_quantity: num,
+    closing_quantity: num,
+    waste_quantity: num.default(0),
+    average_unit_cost: num,
+    note: z.string().optional()
+  });
+  const parsed = schema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const available = parsed.data.opening_quantity + parsed.data.purchases_quantity;
+  if (parsed.data.closing_quantity > available) {
+    return { error: `Closing stock exceeds available stock (${available.toFixed(2)})` };
+  }
+
+  const usageCalc = calculateUsage({
+    opening: parsed.data.opening_quantity,
+    purchases: parsed.data.purchases_quantity,
+    closing: parsed.data.closing_quantity,
+    waste: parsed.data.waste_quantity,
+    averageUnitCost: parsed.data.average_unit_cost
+  });
+
+  if (usageCalc.usage < 0) {
+    return { error: "Calculated usage is negative. Check closing stock and waste values." };
+  }
+
+  const supabase = await createClient();
+  const restaurant_id = await getCurrentRestaurantId();
+
+  const { error: upsertError } = await supabase.from("daily_stock_counts").upsert(
+    {
+      restaurant_id,
+      inventory_item_id: parsed.data.inventory_item_id,
+      count_date: parsed.data.count_date,
+      closing_quantity: parsed.data.closing_quantity,
+      waste_quantity: parsed.data.waste_quantity,
+      note: parsed.data.note
+    },
+    { onConflict: "restaurant_id,inventory_item_id,count_date" }
+  );
+  if (upsertError) return { error: upsertError.message };
+
+  const { error: updateItemError } = await supabase
+    .from("inventory_items")
+    .update({ current_quantity: parsed.data.closing_quantity })
+    .eq("id", parsed.data.inventory_item_id)
+    .eq("restaurant_id", restaurant_id);
+  if (updateItemError) return { error: updateItemError.message };
+
+  await supabase.from("inventory_movements").insert({
+    restaurant_id,
+    inventory_item_id: parsed.data.inventory_item_id,
+    movement_type: "usage",
+    quantity: usageCalc.usage,
+    unit_cost: parsed.data.average_unit_cost,
+    total_cost: usageCalc.usageCost,
+    note: `Auto from closing stock count (${parsed.data.count_date})`
+  });
+
+  if (parsed.data.waste_quantity > 0) {
+    await supabase.from("inventory_movements").insert({
+      restaurant_id,
+      inventory_item_id: parsed.data.inventory_item_id,
+      movement_type: "waste",
+      quantity: parsed.data.waste_quantity,
+      unit_cost: parsed.data.average_unit_cost,
+      total_cost: parsed.data.waste_quantity * parsed.data.average_unit_cost,
+      note: parsed.data.note || `Waste captured during closing stock count (${parsed.data.count_date})`
+    });
+  }
+
+  revalidatePath("/usage");
+  revalidatePath("/inventory");
+  revalidatePath(`/inventory/${parsed.data.inventory_item_id}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/reports");
+  return { success: "Closing stock saved" };
 }

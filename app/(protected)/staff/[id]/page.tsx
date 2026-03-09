@@ -1,4 +1,5 @@
 import { addAdvance } from "@/actions/operations";
+import { ActionForm } from "@/components/forms/action-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getCurrentRestaurantId } from "@/lib/data";
@@ -64,13 +65,13 @@ export default async function StaffDetailPage({ params, searchParams }: { params
           </form>
         </div>
 
-        <form action={addAdvance} className="grid gap-2 md:grid-cols-4">
+        <ActionForm action={addAdvance} keepFields={["staff_id", "advance_date"]} className="grid gap-2 md:grid-cols-4">
           <input type="hidden" name="staff_id" value={staff.id} />
           <Input name="advance_date" type="date" defaultValue={today} required />
           <Input name="amount" type="number" step="0.01" placeholder="Amount" required />
           <Input name="note" placeholder="Reason" />
           <Button>Add Advance</Button>
-        </form>
+        </ActionForm>
 
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">

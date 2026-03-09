@@ -1,4 +1,5 @@
 import { adjustInventory } from "@/actions/operations";
+import { ActionForm } from "@/components/forms/action-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getCurrentRestaurantId } from "@/lib/data";
@@ -35,7 +36,7 @@ export default async function InventoryDetailPage({ params }: { params: { id: st
         </div>
       </div>
 
-      <form action={adjustInventory} className="card grid gap-3 p-4 md:grid-cols-4">
+      <ActionForm action={adjustInventory} className="card grid gap-3 p-4 md:grid-cols-4">
         <input type="hidden" name="inventory_item_id" value={item.id} />
         <div>
           <label className="mb-1 block text-xs text-muted">Adjustment quantity (+/-)</label>
@@ -46,7 +47,7 @@ export default async function InventoryDetailPage({ params }: { params: { id: st
           <Input name="note" placeholder="Spoilage, count correction, transfer..." />
         </div>
         <div className="flex items-end"><Button className="w-full">Apply Stock Adjustment</Button></div>
-      </form>
+      </ActionForm>
 
       <div className="card overflow-hidden">
         <div className="border-b border-border p-4"><h3 className="font-medium">Movement history</h3></div>

@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { addInventoryItem } from "@/actions/admin";
 import { adjustInventory } from "@/actions/operations";
+import { ActionForm } from "@/components/forms/action-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { getCurrentRestaurantId } from "@/lib/data";
 import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
@@ -22,16 +24,16 @@ export default async function InventoryPage() {
         <p className="text-sm text-muted">Manage master items, monitor low stock, and perform quick adjustments when needed.</p>
       </div>
 
-      <form action={addInventoryItem} className="card grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+      <ActionForm action={addInventoryItem} className="card grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
         <p className="text-xs uppercase tracking-wide text-muted md:col-span-2 xl:col-span-4">Add new inventory item</p>
         <Input name="name" placeholder="Item name" required />
-        <select name="category_id" className="h-10 rounded-xl border border-border bg-black/20 px-3 text-sm"><option value="">Category</option>{categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+        <Select name="category_id"><option value="">Category</option>{categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>
         <Input name="unit" placeholder="Unit (kg, pcs...)" required />
         <Input name="current_quantity" type="number" step="0.01" placeholder="Current qty" required />
         <Input name="min_quantity" type="number" step="0.01" placeholder="Min qty" required />
         <Input name="average_unit_cost" type="number" step="0.01" placeholder="Avg cost" required />
         <div className="flex items-end"><Button className="w-full">Add Item</Button></div>
-      </form>
+      </ActionForm>
 
       <div className="card overflow-hidden">
         <div className="border-b border-border p-4"><h3 className="font-medium">Inventory listing</h3></div>
@@ -57,12 +59,12 @@ export default async function InventoryPage() {
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <Link href={`/inventory/${i.id}`}><Button size="sm" variant="outline">View / Edit</Button></Link>
-                        <form action={adjustInventory} className="flex items-center gap-2">
+                        <ActionForm action={adjustInventory} className="flex items-center gap-2">
                           <input type="hidden" name="inventory_item_id" value={i.id} />
                           <Input name="quantity" type="number" step="0.01" placeholder="+/-" className="h-8 w-20" required />
                           <input type="hidden" name="note" value="Quick adjustment" />
                           <Button size="sm">Adjust</Button>
-                        </form>
+                        </ActionForm>
                       </div>
                     </td>
                   </tr>
