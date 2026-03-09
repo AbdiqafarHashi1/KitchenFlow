@@ -13,20 +13,24 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
   const restaurantId = await getCurrentRestaurantId();
   const selectedDate = searchParams?.date ?? new Date().toISOString().slice(0, 10);
 
-  const [{ data: sales }, { data: purchases }, { data: advances }, { data: lowStock }, { data: staff }, { data: payroll }] = await Promise.all([
+  const [{ data: sales }, { data: purchases }, { data: advances }, { data: lowStock }, { data: staff }, { data: payroll }, { data: usageMovements }, { data: closingCounts }] = await Promise.all([
     supabase.from("daily_sales").select("sales_amount").eq("restaurant_id", restaurantId).eq("sales_date", selectedDate),
     supabase.from("purchases").select("total_cost").eq("restaurant_id", restaurantId).eq("purchase_date", selectedDate),
     supabase.from("staff_advances").select("amount").eq("restaurant_id", restaurantId).eq("advance_date", selectedDate),
     supabase.from("inventory_items").select("id").eq("restaurant_id", restaurantId).filter("current_quantity", "lte", "min_quantity"),
     supabase.from("staff").select("id").eq("restaurant_id", restaurantId).eq("is_active", true),
-    supabase.from("payroll_records").select("net_payable").eq("restaurant_id", restaurantId).eq("payment_status", "pending")
+    supabase.from("payroll_records").select("net_payable").eq("restaurant_id", restaurantId).eq("payment_status", "pending"),
+    supabase.from("inventory_movements").select("total_cost").eq("restaurant_id", restaurantId).eq("movement_type", "usage").gte("created_at", `${selectedDate}T00:00:00`).lt("created_at", `${selectedDate}T23:59:59`),
+    supabase.from("daily_stock_counts").select("id").eq("restaurant_id", restaurantId).eq("count_date", selectedDate)
   ]);
 
   const todaySales = (sales ?? []).reduce((a, c) => a + c.sales_amount, 0);
   const todayPurchases = (purchases ?? []).reduce((a, c) => a + c.total_cost, 0);
   const advancesToday = (advances ?? []).reduce((a, c) => a + c.amount, 0);
   const payrollSnapshot = (payroll ?? []).reduce((a, c) => a + c.net_payable, 0);
-  const gross = todaySales - todayPurchases - payrollSnapshot;
+  const dailyCashResult = todaySales - todayPurchases - advancesToday;
+  const usageCostToday = (usageMovements ?? []).reduce((a, c) => a + (c.total_cost ?? 0), 0);
+  const usageReady = (closingCounts?.length ?? 0) > 0;
 
   const [{ data: recentPurchases }, { data: recentAdvances }, { data: movements }, { data: lowAlerts }] = await Promise.all([
     supabase.from("purchases").select("id,supplier_name,total_cost,purchase_date,inventory_items(name)").eq("restaurant_id", restaurantId).order("created_at", { ascending: false }).limit(8),
@@ -57,29 +61,24 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
         <Card title="Payroll Snapshot" value={formatCurrency(payrollSnapshot)} />
       </div>
 
-      <div className="card p-4">
-        <p className="text-sm text-muted">Gross Profit Estimate ({selectedDate})</p>
-        <p className="mt-2 text-3xl font-semibold text-accent">{formatCurrency(gross)}</p>
-        <p className="text-xs text-muted">Sales - Purchases - Pending payroll.</p>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="card p-4">
+          <p className="text-sm text-muted">Daily Cash Result ({selectedDate})</p>
+          <p className="mt-2 text-3xl font-semibold text-accent">{formatCurrency(dailyCashResult)}</p>
+          <p className="text-xs text-muted">Sales - Purchases - Advances.</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-sm text-muted">Daily Gross from Usage ({selectedDate})</p>
+          {usageReady ? <p className="mt-2 text-3xl font-semibold text-accent">{formatCurrency(todaySales - usageCostToday)}</p> : <p className="mt-2 text-sm text-amber-300">Daily gross from usage pending closing stock count.</p>}
+          <p className="text-xs text-muted">Sales - calculated usage cost.</p>
+        </div>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <div className="card overflow-hidden">
-          <div className="border-b border-border p-4"><h3 className="font-medium">Recent Purchases</h3></div>
-          <div className="overflow-x-auto"><table className="min-w-full text-sm"><tbody>{recentPurchases?.map((p) => <tr key={p.id} className="border-t border-border/60 text-muted"><td className="px-4 py-2">{p.purchase_date}</td><td className="px-4 py-2">{(p as { inventory_items?: { name?: string } }).inventory_items?.name ?? "Item"}</td><td className="px-4 py-2">{p.supplier_name ?? "Supplier"}</td><td className="px-4 py-2 text-foreground">{formatCurrency(p.total_cost)}</td></tr>)}</tbody></table></div>
-        </div>
-        <div className="card overflow-hidden">
-          <div className="border-b border-border p-4"><h3 className="font-medium">Recent Advances</h3></div>
-          <div className="overflow-x-auto"><table className="min-w-full text-sm"><tbody>{recentAdvances?.map((a) => <tr key={a.id} className="border-t border-border/60 text-muted"><td className="px-4 py-2">{a.advance_date}</td><td className="px-4 py-2">{(a as { staff?: { full_name?: string } }).staff?.full_name ?? "Staff"}</td><td className="px-4 py-2">{a.note ?? "-"}</td><td className="px-4 py-2 text-foreground">{formatCurrency(a.amount)}</td></tr>)}</tbody></table></div>
-        </div>
-        <div className="card overflow-hidden">
-          <div className="border-b border-border p-4"><h3 className="font-medium">Recent Inventory Movements</h3></div>
-          <div className="overflow-x-auto"><table className="min-w-full text-sm"><tbody>{movements?.map((m) => <tr key={m.id} className="border-t border-border/60 text-muted"><td className="px-4 py-2">{new Date(m.created_at).toLocaleString()}</td><td className="px-4 py-2">{(m as { inventory_items?: { name?: string } }).inventory_items?.name ?? "Item"}</td><td className="px-4 py-2">{m.movement_type}</td><td className="px-4 py-2 text-foreground">{m.quantity}</td></tr>)}</tbody></table></div>
-        </div>
-        <div className="card overflow-hidden">
-          <div className="border-b border-border p-4"><h3 className="font-medium">Low Stock Alerts</h3></div>
-          <div className="overflow-x-auto"><table className="min-w-full text-sm"><tbody>{lowAlerts?.map((l) => <tr key={l.id} className="border-t border-border/60 text-muted"><td className="px-4 py-2">{l.name}</td><td className="px-4 py-2">{l.current_quantity}</td><td className="px-4 py-2">min {l.min_quantity}</td></tr>)}</tbody></table></div>
-        </div>
+        <div className="card overflow-hidden"><div className="border-b border-border p-4"><h3 className="font-medium">Recent Purchases</h3></div><div className="overflow-x-auto"><table className="min-w-full text-sm"><tbody>{recentPurchases?.map((p) => <tr key={p.id} className="border-t border-border/60 text-muted"><td className="px-4 py-2">{p.purchase_date}</td><td className="px-4 py-2">{(p as { inventory_items?: { name?: string } }).inventory_items?.name ?? "Item"}</td><td className="px-4 py-2">{p.supplier_name ?? "Supplier"}</td><td className="px-4 py-2 text-foreground">{formatCurrency(p.total_cost)}</td></tr>)}</tbody></table></div></div>
+        <div className="card overflow-hidden"><div className="border-b border-border p-4"><h3 className="font-medium">Recent Advances</h3></div><div className="overflow-x-auto"><table className="min-w-full text-sm"><tbody>{recentAdvances?.map((a) => <tr key={a.id} className="border-t border-border/60 text-muted"><td className="px-4 py-2">{a.advance_date}</td><td className="px-4 py-2">{(a as { staff?: { full_name?: string } }).staff?.full_name ?? "Staff"}</td><td className="px-4 py-2">{a.note ?? "-"}</td><td className="px-4 py-2 text-foreground">{formatCurrency(a.amount)}</td></tr>)}</tbody></table></div></div>
+        <div className="card overflow-hidden"><div className="border-b border-border p-4"><h3 className="font-medium">Recent Inventory Movements</h3></div><div className="overflow-x-auto"><table className="min-w-full text-sm"><tbody>{movements?.map((m) => <tr key={m.id} className="border-t border-border/60 text-muted"><td className="px-4 py-2">{new Date(m.created_at).toLocaleString()}</td><td className="px-4 py-2">{(m as { inventory_items?: { name?: string } }).inventory_items?.name ?? "Item"}</td><td className="px-4 py-2">{m.movement_type}</td><td className="px-4 py-2 text-foreground">{m.quantity}</td></tr>)}</tbody></table></div></div>
+        <div className="card overflow-hidden"><div className="border-b border-border p-4"><h3 className="font-medium">Low Stock Alerts</h3></div><div className="overflow-x-auto"><table className="min-w-full text-sm"><tbody>{lowAlerts?.map((l) => <tr key={l.id} className="border-t border-border/60 text-muted"><td className="px-4 py-2">{l.name}</td><td className="px-4 py-2">{l.current_quantity}</td><td className="px-4 py-2">min {l.min_quantity}</td></tr>)}</tbody></table></div></div>
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Boxes, ChartNoAxesCombined, LayoutDashboard, ReceiptText, Settings, ShoppingBasket, Users } from "lucide-react";
+import { Boxes, ChartNoAxesCombined, LayoutDashboard, ReceiptText, Settings, ShoppingBasket, Users, ClipboardCheck } from "lucide-react";
 
 const items = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -7,6 +7,7 @@ const items = [
   { href: "/inventory", label: "Inventory", icon: Boxes },
   { href: "/purchases", label: "Purchases", icon: ShoppingBasket },
   { href: "/sales", label: "Sales", icon: ReceiptText },
+  { href: "/usage", label: "Closing Stock", icon: ClipboardCheck },
   { href: "/reports", label: "Reports", icon: ChartNoAxesCombined },
   { href: "/settings", label: "Settings", icon: Settings }
 ];
