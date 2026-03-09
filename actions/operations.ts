@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase-server";
 import { getCurrentRestaurantId } from "@/lib/data";
+import { requirePermission } from "@/lib/permissions";
 
 const num = z.coerce.number().nonnegative();
 
@@ -13,8 +14,9 @@ export async function addAdvance(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
   const supabase = await createClient();
+  await requirePermission("staff_advances:create");
   const restaurant_id = await getCurrentRestaurantId();
-  const { error } = await supabase.from("staff_advances").insert({ ...parsed.data, restaurant_id });
+  const { error } = await supabase.from("staff_advances").insert({ ...parsed.data, restaurant_id } as never);
   if (error) return { error: error.message };
   revalidatePath("/staff");
   revalidatePath(`/staff/${parsed.data.staff_id}`);
@@ -28,20 +30,14 @@ export async function addPurchase(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
   const supabase = await createClient();
+  await requirePermission("purchases:create");
   const restaurant_id = await getCurrentRestaurantId();
   const total_cost = parsed.data.quantity * parsed.data.unit_cost;
 
-  const { data: item, error: itemError } = await supabase.from("inventory_items").select("current_quantity,average_unit_cost").eq("id", parsed.data.inventory_item_id).single();
-  if (itemError || !item) return { error: itemError?.message ?? "Item not found" };
-
-  const newQty = item.current_quantity + parsed.data.quantity;
-  const avgCost = newQty === 0 ? 0 : (item.current_quantity * item.average_unit_cost + parsed.data.quantity * parsed.data.unit_cost) / newQty;
-
-  const { error } = await supabase.from("purchases").insert({ ...parsed.data, total_cost, restaurant_id });
+  const { error } = await supabase.from("purchases").insert({ ...parsed.data, total_cost, restaurant_id } as never);
   if (error) return { error: error.message };
 
-  await supabase.from("inventory_items").update({ current_quantity: newQty, average_unit_cost: avgCost }).eq("id", parsed.data.inventory_item_id);
-  await supabase.from("inventory_movements").insert({ restaurant_id, inventory_item_id: parsed.data.inventory_item_id, movement_type: "purchase", quantity: parsed.data.quantity, unit_cost: parsed.data.unit_cost, total_cost, note: parsed.data.note });
+  await supabase.from("inventory_movements").insert({ restaurant_id, inventory_item_id: parsed.data.inventory_item_id, movement_type: "purchase", quantity: parsed.data.quantity, unit_cost: parsed.data.unit_cost, total_cost, note: parsed.data.note } as never);
 
   revalidatePath("/purchases");
   revalidatePath("/inventory");
@@ -56,8 +52,9 @@ export async function addSale(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
   const supabase = await createClient();
+  await requirePermission("sales:create");
   const restaurant_id = await getCurrentRestaurantId();
-  const { error } = await supabase.from("daily_sales").insert({ ...parsed.data, restaurant_id });
+  const { error } = await supabase.from("daily_sales").insert({ ...parsed.data, restaurant_id } as never);
   if (error) return { error: error.message };
   revalidatePath("/sales");
   revalidatePath("/dashboard");
@@ -71,13 +68,9 @@ export async function adjustInventory(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
   const supabase = await createClient();
+  await requirePermission("inventory:adjust");
   const restaurant_id = await getCurrentRestaurantId();
-  const { data: item } = await supabase.from("inventory_items").select("current_quantity").eq("id", parsed.data.inventory_item_id).single();
-  if (!item) return { error: "Item not found" };
-
-  const newQty = item.current_quantity + parsed.data.quantity;
-  await supabase.from("inventory_items").update({ current_quantity: newQty }).eq("id", parsed.data.inventory_item_id);
-  await supabase.from("inventory_movements").insert({ restaurant_id, inventory_item_id: parsed.data.inventory_item_id, movement_type: "adjustment", quantity: parsed.data.quantity, note: parsed.data.note });
+  await supabase.from("inventory_movements").insert({ restaurant_id, inventory_item_id: parsed.data.inventory_item_id, movement_type: "adjustment", quantity: parsed.data.quantity, note: parsed.data.note } as never);
 
   revalidatePath("/inventory");
   revalidatePath(`/inventory/${parsed.data.inventory_item_id}`);
