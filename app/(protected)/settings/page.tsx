@@ -1,11 +1,18 @@
+import { AccessRestricted } from "@/components/layout/access-restricted";
+import { hasPermission } from "@/lib/permissions";
 import { updateRestaurantSettings } from "@/actions/admin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getCurrentRestaurantId } from "@/lib/data";
+import { getCurrentRestaurantId, getCurrentUserRole } from "@/lib/data";
 import { createClient } from "@/lib/supabase-server";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
+  const role = await getCurrentUserRole();
+  if (!hasPermission(role, "settings:manage")) {
+    return <AccessRestricted message="Settings are available to admin users only." />;
+  }
+
   const restaurantId = await getCurrentRestaurantId();
   const { data: restaurant } = await supabase.from("restaurants").select("*").eq("id", restaurantId).single();
 

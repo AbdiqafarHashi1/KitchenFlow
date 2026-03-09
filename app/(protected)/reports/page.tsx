@@ -1,7 +1,9 @@
+import { AccessRestricted } from "@/components/layout/access-restricted";
+import { hasPermission } from "@/lib/permissions";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getCurrentRestaurantId } from "@/lib/data";
+import { getCurrentRestaurantId, getCurrentUserRole } from "@/lib/data";
 import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
 
@@ -22,6 +24,11 @@ function rangeFromPreset(preset: string) {
 
 export default async function ReportsPage({ searchParams }: { searchParams?: { start?: string; end?: string; preset?: string } }) {
   const supabase = await createClient();
+  const role = await getCurrentUserRole();
+  if (!hasPermission(role, "reports:view")) {
+    return <AccessRestricted message="Reports are available to admin users only." />;
+  }
+
   const restaurantId = await getCurrentRestaurantId();
   const preset = searchParams?.preset ?? "today";
   const presetRange = rangeFromPreset(preset);

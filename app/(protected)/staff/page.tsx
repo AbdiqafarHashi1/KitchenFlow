@@ -5,9 +5,10 @@ import { ActionForm } from "@/components/forms/action-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { getCurrentRestaurantId } from "@/lib/data";
+import { getCurrentRestaurantId, getCurrentUserRole } from "@/lib/data";
 import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
+import { hasPermission } from "@/lib/permissions";
 
 function getMonthRange(period: string) {
   const [year, month] = period.split("-").map(Number);
@@ -18,6 +19,8 @@ function getMonthRange(period: string) {
 
 export default async function StaffPage({ searchParams }: { searchParams?: { period?: string } }) {
   const supabase = await createClient();
+  const role = await getCurrentUserRole();
+  const canManageStaff = hasPermission(role, "staff:manage");
   const restaurantId = await getCurrentRestaurantId();
   const currentPeriod = searchParams?.period ?? new Date().toISOString().slice(0, 7);
   const today = new Date().toISOString().slice(0, 10);
@@ -49,15 +52,29 @@ export default async function StaffPage({ searchParams }: { searchParams?: { per
         </form>
       </div>
 
-      <ActionForm action={addStaff} className="card grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-6">
-        <p className="text-xs uppercase tracking-wide text-muted md:col-span-2 xl:col-span-6">Quick add staff member</p>
-        <Input name="full_name" placeholder="Full name" required />
-        <Input name="role" placeholder="Role" required />
-        <Input name="phone" placeholder="Phone" />
-        <Select name="salary_type"><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="daily">Daily</option></Select>
-        <Input name="base_salary" type="number" step="0.01" placeholder="Base salary" required />
-        <div className="flex items-end"><Button className="w-full">Add Staff</Button></div>
-      </ActionForm>
+{canManageStaff ? (
+  <ActionForm action={addStaff} className="card grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-6">
+    <p className="text-xs uppercase tracking-wide text-muted md:col-span-2 xl:col-span-6">
+      Quick add staff member
+    </p>
+    <Input name="full_name" placeholder="Full name" required />
+    <Input name="role" placeholder="Role" required />
+    <Input name="phone" placeholder="Phone" />
+    <Select name="salary_type" defaultValue="monthly">
+      <option value="monthly">Monthly</option>
+      <option value="weekly">Weekly</option>
+      <option value="daily">Daily</option>
+    </Select>
+    <Input name="base_salary" type="number" step="0.01" placeholder="Base salary" required />
+    <div className="flex items-end">
+      <Button className="w-full">Add Staff</Button>
+    </div>
+  </ActionForm>
+) : (
+  <div className="card p-4 text-sm text-muted">
+    Staff records are view-only. You can still capture advances.
+  </div>
+)}
 
       <div className="card overflow-hidden">
         <div className="border-b border-border p-4"><h3 className="font-medium">Staff roster ({start} to {end})</h3></div>
