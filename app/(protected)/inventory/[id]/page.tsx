@@ -7,13 +7,49 @@ import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
 import { hasPermission } from "@/lib/permissions";
 
+type InventoryItemDetail = {
+  id: string;
+  name: string;
+  unit: string;
+  current_quantity: number;
+  min_quantity: number;
+  average_unit_cost: number;
+  inventory_categories: { name: string } | null;
+};
+
+type InventoryMovementRow = {
+  id: string;
+  movement_type: "purchase" | "usage" | "waste" | "adjustment";
+  quantity: number;
+  unit_cost: number | null;
+  total_cost: number | null;
+  note: string | null;
+  created_at: string;
+};
+
 export default async function InventoryDetailPage({ params }: { params: { id: string } }) {
   const supabase = await createClient();
   const role = await getCurrentUserRole();
   const canAdjustInventory = hasPermission(role, "inventory:adjust");
   const restaurantId = await getCurrentRestaurantId();
-  const { data: item } = await supabase.from("inventory_items").select("*, inventory_categories(name)").eq("restaurant_id", restaurantId).eq("id", params.id).single();
-  const { data: movements } = await supabase.from("inventory_movements").select("*").eq("restaurant_id", restaurantId).eq("inventory_item_id", params.id).order("created_at", { ascending: false }).limit(30);
+  const { data: rawItem } = await supabase
+    .from("inventory_items")
+    .select("id,name,unit,current_quantity,min_quantity,average_unit_cost,inventory_categories(name)")
+    .eq("restaurant_id", restaurantId)
+    .eq("id", params.id)
+    .single();
+
+  const item = rawItem as InventoryItemDetail | null;
+
+  const { data: rawMovements } = await supabase
+    .from("inventory_movements")
+    .select("id,movement_type,quantity,unit_cost,total_cost,note,created_at")
+    .eq("restaurant_id", restaurantId)
+    .eq("inventory_item_id", params.id)
+    .order("created_at", { ascending: false })
+        .limit(30);
+
+  const movements = (rawMovements ?? []) as InventoryMovementRow[];
 
   if (!item) return <div className="card p-4">Item not found.</div>;
 
@@ -23,7 +59,9 @@ export default async function InventoryDetailPage({ params }: { params: { id: st
         <div>
           <p className="text-xs text-muted">Item</p>
           <p className="text-lg font-semibold">{item.name}</p>
-          <p className="text-sm text-muted">{(item as { inventory_categories?: { name?: string } }).inventory_categories?.name ?? "Uncategorized"} • {item.unit}</p>
+          <p className="text-sm text-muted">
+            {item.inventory_categories?.name ?? "Uncategorized"} • {item.unit}
+          </p>
         </div>
         <div>
           <p className="text-xs text-muted">Current quantity</p>
@@ -39,33 +77,40 @@ export default async function InventoryDetailPage({ params }: { params: { id: st
         </div>
       </div>
 
-{canAdjustInventory ? (
-  <ActionForm action={adjustInventory} className="card grid gap-3 p-4 md:grid-cols-4">
-    <input type="hidden" name="inventory_item_id" value={item.id} />
-    <div>
-      <label className="mb-1 block text-xs text-muted">Adjustment quantity (+/-)</label>
-      <Input name="quantity" type="number" step="0.01" placeholder="0.00" required />
-    </div>
-    <div className="md:col-span-2">
-      <label className="mb-1 block text-xs text-muted">Reason</label>
-      <Input name="note" placeholder="Spoilage, count correction, transfer..." />
-    </div>
-    <div className="flex items-end">
-      <Button className="w-full">Apply Stock Adjustment</Button>
-    </div>
-  </ActionForm>
-) : (
-  <div className="card p-4 text-sm text-muted">
-    Inventory adjustments are restricted for your role.
-  </div>
-)}
-      
+      {canAdjustInventory ? (
+        <ActionForm action={adjustInventory} className="card grid gap-3 p-4 md:grid-cols-4">
+          <input type="hidden" name="inventory_item_id" value={item.id} />
+          <div>
+            <label className="mb-1 block text-xs text-muted">Adjustment quantity (+/-)</label>
+            <Input name="quantity" type="number" step="0.01" placeholder="0.00" required />
+          </div>
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-xs text-muted">Reason</label>
+            <Input name="note" placeholder="Spoilage, count correction, transfer..." />
+          </div>
+          <div className="flex items-end">
+            <Button className="w-full">Apply Stock Adjustment</Button>
+          </div>
+        </ActionForm>
+      ) : (
+        <div className="card p-4 text-sm text-muted">Inventory adjustments are restricted for your role.</div>
+      )}
+
       <div className="card overflow-hidden">
-        <div className="border-b border-border p-4"><h3 className="font-medium">Movement history</h3></div>
+        <div className="border-b border-border p-4">
+          <h3 className="font-medium">Movement history</h3>
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-black/20 text-left text-xs uppercase tracking-wide text-muted">
-              <tr><th className="px-4 py-3">Date/Time</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Quantity</th><th className="px-4 py-3">Unit cost</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Note</th></tr>
+              <tr>
+                <th className="px-4 py-3">Date/Time</th>
+                <th className="px-4 py-3">Type</th>
+                <th className="px-4 py-3">Quantity</th>
+                <th className="px-4 py-3">Unit cost</th>
+                <th className="px-4 py-3">Total</th>
+                <th className="px-4 py-3">Note</th>
+              </tr>
             </thead>
             <tbody>
               {movements?.map((m) => (

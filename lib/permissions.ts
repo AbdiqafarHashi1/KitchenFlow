@@ -87,11 +87,13 @@ export async function getCurrentUserContext() {
     throw new UserContextError("UNAUTHENTICATED", "Unauthorized");
   }
 
-  const { data, error } = await supabase
+  const { data: rawProfile, error } = await supabase
     .from("admin_profiles")
     .select("restaurant_id,role")
     .eq("id", userData.user.id)
     .maybeSingle();
+
+  const data = rawProfile as { restaurant_id: string | null; role: string | null } | null;
 
   if (error) {
     logUserContextFailure("PROFILE_QUERY_ERROR", {

@@ -5,6 +5,15 @@ import { getCurrentRestaurantId } from "@/lib/data";
 import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
 
+type ExpenseRow = {
+  id: string;
+  expense_date: string;
+  category: string;
+  amount: number;
+  note: string | null;
+  created_at: string;
+};
+
 export default async function ExpensesPage({ searchParams }: { searchParams?: { date?: string } }) {
   const supabase = await createClient();
   const restaurantId = await getCurrentRestaurantId();
@@ -15,7 +24,8 @@ export default async function ExpensesPage({ searchParams }: { searchParams?: { 
     .select("id,expense_date,category,amount,note,created_at")
     .eq("restaurant_id", restaurantId)
     .eq("expense_date", selectedDate)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .returns<ExpenseRow[]>();
 
   const totalExpenses = (expenses ?? []).reduce((sum, expense) => sum + expense.amount, 0);
 
@@ -36,7 +46,10 @@ export default async function ExpensesPage({ searchParams }: { searchParams?: { 
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[2fr,1fr]">
-        <form action={addExpense} className="card grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+        <form action={async (formData) => {
+          "use server";
+          await addExpense(formData);
+        }} className="card grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
           <div className="md:col-span-2 xl:col-span-3">
             <p className="text-xs uppercase tracking-wide text-muted">Quick expense entry</p>
           </div>

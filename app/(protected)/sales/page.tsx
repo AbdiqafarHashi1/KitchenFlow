@@ -6,14 +6,34 @@ import { getCurrentRestaurantId } from "@/lib/data";
 import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
 
+type SalesRow = {
+  id: string;
+  sales_date: string;
+  sales_amount: number;
+  source: string | null;
+  notes: string | null;
+};
+
 export default async function SalesPage({ searchParams }: { searchParams?: { date?: string } }) {
   const supabase = await createClient();
   const restaurantId = await getCurrentRestaurantId();
   const selectedDate = searchParams?.date ?? new Date().toISOString().slice(0, 10);
 
   const [{ data: sales }, { data: recentSales }] = await Promise.all([
-    supabase.from("daily_sales").select("*").eq("restaurant_id", restaurantId).eq("sales_date", selectedDate).order("created_at", { ascending: false }),
-    supabase.from("daily_sales").select("*").eq("restaurant_id", restaurantId).order("sales_date", { ascending: false }).limit(15)
+    supabase
+      .from("daily_sales")
+      .select("id,sales_date,sales_amount,source,notes")
+      .eq("restaurant_id", restaurantId)
+      .eq("sales_date", selectedDate)
+      .order("created_at", { ascending: false })
+      .returns<SalesRow[]>(),
+    supabase
+      .from("daily_sales")
+      .select("id,sales_date,sales_amount,source,notes")
+      .eq("restaurant_id", restaurantId)
+      .order("sales_date", { ascending: false })
+      .limit(15)
+      .returns<SalesRow[]>()
   ]);
 
   const selectedTotal = (sales ?? []).reduce((sum, s) => sum + s.sales_amount, 0);

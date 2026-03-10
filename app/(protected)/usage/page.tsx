@@ -7,6 +7,18 @@ import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
 import { calculateUsage } from "@/lib/usage";
 
+type UsageItemRow = { id: string; name: string; unit: string; average_unit_cost: number };
+type PurchaseQtyRow = { inventory_item_id: string; quantity: number };
+type StockCountRow = {
+  id: string;
+  inventory_item_id: string;
+  count_date: string;
+  closing_quantity: number;
+  waste_quantity: number;
+  note: string | null;
+};
+type PreviousCountRow = { inventory_item_id: string; count_date: string; closing_quantity: number };
+
 export default async function UsagePage({
   searchParams,
 }: {
@@ -49,18 +61,23 @@ export default async function UsagePage({
       .order("count_date", { ascending: false }),
   ]);
 
+  const typedItems = (items ?? []) as UsageItemRow[];
+  const typedPurchases = (purchases ?? []) as PurchaseQtyRow[];
+  const typedCounts = (counts ?? []) as StockCountRow[];
+  const typedPreviousCounts = (previousCounts ?? []) as PreviousCountRow[];
+
   const purchaseMap = new Map<string, number>();
-  for (const p of purchases ?? []) {
+  for (const p of typedPurchases) {
     purchaseMap.set(
       p.inventory_item_id,
       (purchaseMap.get(p.inventory_item_id) ?? 0) + p.quantity
     );
   }
 
-  const todayCountMap = new Map((counts ?? []).map((c) => [c.inventory_item_id, c]));
+  const todayCountMap = new Map(typedCounts.map((c) => [c.inventory_item_id, c]));
 
   const prevMap = new Map<string, number>();
-  for (const pc of previousCounts ?? []) {
+  for (const pc of typedPreviousCounts) {
     if (!prevMap.has(pc.inventory_item_id)) {
       prevMap.set(pc.inventory_item_id, pc.closing_quantity);
     }
@@ -110,7 +127,7 @@ export default async function UsagePage({
             </thead>
 
             <tbody>
-              {items?.map((item) => {
+              {typedItems.map((item) => {
                 const opening = prevMap.get(item.id) ?? 0;
                 const purchased = purchaseMap.get(item.id) ?? 0;
                 const saved = todayCountMap.get(item.id);
@@ -223,11 +240,11 @@ export default async function UsagePage({
               </tr>
             </thead>
             <tbody>
-              {counts?.length ? (
-                counts.map((c) => (
+              {typedCounts.length ? (
+                typedCounts.map((c) => (
                   <tr key={c.id} className="border-t border-border/60 text-muted">
                     <td className="px-3 py-2">
-                      {(items ?? []).find((i) => i.id === c.inventory_item_id)?.name ??
+                      {typedItems.find((i) => i.id === c.inventory_item_id)?.name ??
                         c.inventory_item_id}
                     </td>
                     <td className="px-3 py-2 text-foreground">{c.closing_quantity}</td>

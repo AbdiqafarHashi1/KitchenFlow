@@ -5,7 +5,10 @@ import { Input } from "@/components/ui/input";
 export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
-      <form action={signIn} className="card w-full max-w-md space-y-4 p-6">
+      <form action={async (formData) => {
+        "use server";
+        await signIn(formData);
+      }} className="card w-full max-w-md space-y-4 p-6">
         <h1 className="text-2xl font-semibold">KitchenFlow Login</h1>
         <p className="text-sm text-muted">Sign in to manage daily restaurant operations.</p>
         <div>
