@@ -2,6 +2,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { createClient } from "@/lib/supabase-server";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { MobileNavigation } from "@/components/layout/mobile-navigation";
 import { signOut } from "@/actions/auth";
 import { getCurrentUserRole } from "@/lib/data";
 import { AccessRestricted } from "@/components/layout/access-restricted";
@@ -44,13 +45,24 @@ export default async function ProtectedLayout({ children }: { children: React.Re
 
   return (
     <div className="min-h-screen md:flex">
-      <Sidebar role={role} />
+      <Sidebar role={role} className="hidden md:block" />
       <main className="flex-1 p-4 md:p-8">
-        <div className="mb-6 flex items-center justify-between">
+        <MobileNavigation
+          role={role}
+          actions={
+            <form action={signOut}>
+              <Button variant="outline" size="sm">Sign out</Button>
+            </form>
+          }
+        />
+        <div className="mb-6 hidden items-center justify-between md:flex">
           <h1 className="text-2xl font-semibold">Operations Dashboard</h1>
           <form action={signOut}>
             <Button variant="outline">Sign out</Button>
           </form>
+        </div>
+        <div className="mb-4 md:hidden">
+          <h1 className="text-2xl font-semibold">Operations Dashboard</h1>
         </div>
         {children}
       </main>
