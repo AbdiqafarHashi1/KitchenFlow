@@ -84,25 +84,28 @@ export async function addUsage(formData: FormData) {
     .eq("id", parsed.data.inventory_item_id)
     .single();
 
-  if (itemError || !item) return { error: itemError?.message ?? "Inventory item not found" };
+if (itemError || !item) {
+  return { error: itemError?.message ?? "Inventory item not found" };
+}
 
-  const usageTimestamp = `${parsed.data.usage_date}T12:00:00.000Z`;
-  const total_cost = parsed.data.quantity_used * item.average_unit_cost;
-  const noteWithActor = parsed.data.note
-    ? `${parsed.data.note} (entered by ${context.userId})`
-    : `entered by ${context.userId}`;
+const itemRow = item as { average_unit_cost: number | null };
 
-  const { error } = await supabase.from("inventory_movements").insert({
-    restaurant_id,
-    inventory_item_id: parsed.data.inventory_item_id,
-    movement_type: "usage",
-    quantity: parsed.data.quantity_used,
-    unit_cost: item.average_unit_cost,
-    total_cost,
-    note: noteWithActor,
-    created_at: usageTimestamp
-  } as never);
+const usageTimestamp = `${parsed.data.usage_date}T12:00:00.000Z`;
+const total_cost = parsed.data.quantity_used * Number(itemRow.average_unit_cost ?? 0);
+const noteWithActor = parsed.data.note
+  ? `${parsed.data.note} (entered by ${context.userId})`
+  : `entered by ${context.userId}`;
 
+const { error } = await supabase.from("inventory_movements").insert({
+  restaurant_id,
+  inventory_item_id: parsed.data.inventory_item_id,
+  movement_type: "usage",
+  quantity: parsed.data.quantity_used,
+  unit_cost: Number(itemRow.average_unit_cost ?? 0),
+  total_cost,
+  note: noteWithActor,
+  created_at: usageTimestamp,
+} as never);
   if (error) return { error: error.message };
 
   revalidatePath("/usage");
@@ -183,55 +186,68 @@ export async function saveDailyStockCount(formData: FormData) {
     return { error: "Calculated usage is negative. Check closing stock and waste values." };
   }
 
-  const supabase = await createClient();
-  const restaurant_id = await getCurrentRestaurantId();
+const supabase = await createClient();
+const restaurant_id = await getCurrentRestaurantId();
 
-  const { error: upsertError } = await supabase.from("daily_stock_counts").upsert(
-    {
-      restaurant_id,
-      inventory_item_id: parsed.data.inventory_item_id,
-      count_date: parsed.data.count_date,
-      closing_quantity: parsed.data.closing_quantity,
-      waste_quantity: parsed.data.waste_quantity,
-      note: parsed.data.note
-    },
-    { onConflict: "restaurant_id,inventory_item_id,count_date" }
-  );
-  if (upsertError) return { error: upsertError.message };
+const stockCountRow = {
+  restaurant_id,
+  inventory_item_id: parsed.data.inventory_item_id,
+  count_date: parsed.data.count_date,
+  closing_quantity: parsed.data.closing_quantity,
+  waste_quantity: parsed.data.waste_quantity,
+  note: parsed.data.note,
+} as never;
 
-  const { error: updateItemError } = await supabase
-    .from("inventory_items")
-    .update({ current_quantity: parsed.data.closing_quantity })
-    .eq("id", parsed.data.inventory_item_id)
-    .eq("restaurant_id", restaurant_id);
-  if (updateItemError) return { error: updateItemError.message };
+const { error: upsertError } = await supabase
+  .from("daily_stock_counts")
+  .upsert(stockCountRow, { onConflict: "restaurant_id,inventory_item_id,count_date" });
 
-  await supabase.from("inventory_movements").insert({
+if (upsertError) return { error: upsertError.message };
+
+const inventoryUpdateRow = {
+  current_quantity: parsed.data.closing_quantity,
+} as never;
+
+const { error: updateItemError } = await supabase
+  .from("inventory_items")
+  .update(inventoryUpdateRow)
+  .eq("id", parsed.data.inventory_item_id)
+  .eq("restaurant_id", restaurant_id);
+
+if (updateItemError) return { error: updateItemError.message };
+
+const usageMovementRow = {
+  restaurant_id,
+  inventory_item_id: parsed.data.inventory_item_id,
+  movement_type: "usage",
+  quantity: usageCalc.usage,
+  unit_cost: parsed.data.average_unit_cost,
+  total_cost: usageCalc.usageCost,
+  note: `Auto from closing stock count (${parsed.data.count_date})`,
+} as never;
+
+await supabase.from("inventory_movements").insert(usageMovementRow);
+
+if (parsed.data.waste_quantity > 0) {
+  const wasteMovementRow = {
     restaurant_id,
     inventory_item_id: parsed.data.inventory_item_id,
-    movement_type: "usage",
-    quantity: usageCalc.usage,
+    movement_type: "waste",
+    quantity: parsed.data.waste_quantity,
     unit_cost: parsed.data.average_unit_cost,
-    total_cost: usageCalc.usageCost,
-    note: `Auto from closing stock count (${parsed.data.count_date})`
-  });
+    total_cost: parsed.data.waste_quantity * parsed.data.average_unit_cost,
+    note:
+      parsed.data.note ||
+      `Waste captured during closing stock count (${parsed.data.count_date})`,
+  } as never;
 
-  if (parsed.data.waste_quantity > 0) {
-    await supabase.from("inventory_movements").insert({
-      restaurant_id,
-      inventory_item_id: parsed.data.inventory_item_id,
-      movement_type: "waste",
-      quantity: parsed.data.waste_quantity,
-      unit_cost: parsed.data.average_unit_cost,
-      total_cost: parsed.data.waste_quantity * parsed.data.average_unit_cost,
-      note: parsed.data.note || `Waste captured during closing stock count (${parsed.data.count_date})`
-    });
-  }
+  await supabase.from("inventory_movements").insert(wasteMovementRow);
+}
 
-  revalidatePath("/usage");
-  revalidatePath("/inventory");
-  revalidatePath(`/inventory/${parsed.data.inventory_item_id}`);
-  revalidatePath("/dashboard");
-  revalidatePath("/reports");
-  return { success: "Closing stock saved" };
+revalidatePath("/usage");
+revalidatePath("/inventory");
+revalidatePath(`/inventory/${parsed.data.inventory_item_id}`);
+revalidatePath("/dashboard");
+revalidatePath("/reports");
+return { success: "Closing stock saved" };
 }

@@ -10,6 +10,23 @@ import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
 import { hasPermission } from "@/lib/permissions";
 
+type Category = {
+  id: string;
+  name: string;
+};
+
+type InventoryItem = {
+  id: string;
+  name: string;
+  unit: string;
+  current_quantity: number;
+  min_quantity: number;
+  average_unit_cost: number;
+  inventory_categories?: {
+    name?: string;
+  } | null;
+};
+
 export default async function InventoryPage() {
   const supabase = await createClient();
   const role = await getCurrentUserRole();
@@ -17,7 +34,7 @@ export default async function InventoryPage() {
   const canAdjustInventory = hasPermission(role, "inventory:adjust");
   const restaurantId = await getCurrentRestaurantId();
 
-  const [{ data: items }, { data: categories }] = await Promise.all([
+  const [{ data: rawItems }, { data: rawCategories }] = await Promise.all([
     supabase
       .from("inventory_items")
       .select("*, inventory_categories(name)")
@@ -30,6 +47,9 @@ export default async function InventoryPage() {
       .eq("active", true)
       .order("sort_order"),
   ]);
+
+  const items = (rawItems ?? []) as InventoryItem[];
+  const categories = (rawCategories ?? []) as Category[];
 
   return (
     <div className="space-y-6">
@@ -53,9 +73,9 @@ export default async function InventoryPage() {
 
           <Select name="category_id" defaultValue="">
             <option value="">Category</option>
-            {categories?.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
               </option>
             ))}
           </Select>
@@ -114,24 +134,23 @@ export default async function InventoryPage() {
             </thead>
 
             <tbody>
-              {items?.map((i) => {
-                const low = i.current_quantity <= i.min_quantity;
+              {items.map((item) => {
+                const low = item.current_quantity <= item.min_quantity;
 
                 return (
                   <tr
-                    key={i.id}
+                    key={item.id}
                     className={`border-t border-border/60 ${low ? "bg-red-950/20" : ""}`}
                   >
-                    <td className="px-4 py-3 text-foreground">{i.name}</td>
+                    <td className="px-4 py-3 text-foreground">{item.name}</td>
                     <td className="px-4 py-3 text-muted">
-                      {(i as { inventory_categories?: { name?: string } }).inventory_categories
-                        ?.name ?? "Uncategorized"}
+                      {item.inventory_categories?.name ?? "Uncategorized"}
                     </td>
-                    <td className="px-4 py-3 text-muted">{i.unit}</td>
-                    <td className="px-4 py-3 text-foreground">{i.current_quantity}</td>
-                    <td className="px-4 py-3 text-muted">{i.min_quantity}</td>
+                    <td className="px-4 py-3 text-muted">{item.unit}</td>
+                    <td className="px-4 py-3 text-foreground">{item.current_quantity}</td>
+                    <td className="px-4 py-3 text-muted">{item.min_quantity}</td>
                     <td className="px-4 py-3 text-muted">
-                      {formatCurrency(i.average_unit_cost)}
+                      {formatCurrency(item.average_unit_cost)}
                     </td>
                     <td
                       className={`px-4 py-3 text-xs ${
@@ -142,7 +161,7 @@ export default async function InventoryPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Link href={`/inventory/${i.id}`}>
+                        <Link href={`/inventory/${item.id}`}>
                           <Button size="sm" variant="outline">
                             {canManageInventory ? "View / Edit" : "View"}
                           </Button>
@@ -150,7 +169,7 @@ export default async function InventoryPage() {
 
                         {canAdjustInventory ? (
                           <ActionForm action={adjustInventory} className="flex items-center gap-2">
-                            <input type="hidden" name="inventory_item_id" value={i.id} />
+                            <input type="hidden" name="inventory_item_id" value={item.id} />
                             <Input
                               name="quantity"
                               type="number"
