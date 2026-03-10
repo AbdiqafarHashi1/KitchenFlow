@@ -2,15 +2,19 @@ import { signIn } from "@/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-export default function LoginPage() {
+export default function LoginPage({
+  searchParams,
+}: {
+  searchParams?: { error?: string };
+}) {
+  const error = searchParams?.error;
+
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
-      <form action={async (formData) => {
-        "use server";
-        await signIn(formData);
-      }} className="card w-full max-w-md space-y-4 p-6">
+      <form action={signIn} className="card w-full max-w-md space-y-4 p-6">
         <h1 className="text-2xl font-semibold">KitchenFlow Login</h1>
         <p className="text-sm text-muted">Sign in to manage daily restaurant operations.</p>
+        {error ? <p className="text-sm text-red-400">{error}</p> : null}
         <div>
           <label className="mb-1 block text-sm">Email</label>
           <Input name="email" type="email" required />
