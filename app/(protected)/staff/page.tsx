@@ -10,6 +10,17 @@ import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
 import { hasPermission } from "@/lib/permissions";
 
+type StaffListRow = {
+  id: string;
+  full_name: string;
+  role: string;
+  phone: string | null;
+  salary_type: "monthly" | "weekly" | "daily";
+  base_salary: number;
+};
+
+type AdvanceSummaryRow = { staff_id: string; amount: number };
+
 function getMonthRange(period: string) {
   const [year, month] = period.split("-").map(Number);
   const start = new Date(year, month - 1, 1);
@@ -27,12 +38,15 @@ export default async function StaffPage({ searchParams }: { searchParams?: { per
   const { start, end } = getMonthRange(currentPeriod);
 
   const [{ data: staff }, { data: advances }] = await Promise.all([
-    supabase.from("staff").select("*").eq("restaurant_id", restaurantId).order("full_name"),
+    supabase.from("staff").select("id,full_name,role,phone,salary_type,base_salary").eq("restaurant_id", restaurantId).order("full_name"),
     supabase.from("staff_advances").select("staff_id,amount").eq("restaurant_id", restaurantId).gte("advance_date", start).lte("advance_date", end)
   ]);
 
+  const typedStaff = (staff ?? []) as StaffListRow[];
+  const typedAdvances = (advances ?? []) as AdvanceSummaryRow[];
+
   const advancesByStaff = new Map<string, number>();
-  for (const advance of advances ?? []) {
+  for (const advance of typedAdvances) {
     advancesByStaff.set(advance.staff_id, (advancesByStaff.get(advance.staff_id) ?? 0) + advance.amount);
   }
 
@@ -84,7 +98,7 @@ export default async function StaffPage({ searchParams }: { searchParams?: { per
               <tr><th className="px-4 py-3">Staff</th><th className="px-4 py-3">Salary</th><th className="px-4 py-3">Advances this period</th><th className="px-4 py-3">Net payable (simple)</th><th className="px-4 py-3">Quick advance</th><th className="px-4 py-3">Actions</th></tr>
             </thead>
             <tbody>
-              {staff?.map((s) => {
+              {typedStaff.map((s) => {
                 const advancesTotal = advancesByStaff.get(s.id) ?? 0;
                 return (
                   <tr key={s.id} className="border-t border-border/60 text-muted">

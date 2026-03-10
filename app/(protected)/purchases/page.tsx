@@ -7,6 +7,19 @@ import { getCurrentRestaurantId } from "@/lib/data";
 import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
 
+type PurchaseRow = {
+  id: string;
+  purchase_date: string;
+  supplier_name: string | null;
+  quantity: number;
+  unit_cost: number;
+  total_cost: number;
+  note: string | null;
+  inventory_items: { name: string } | null;
+};
+type InventoryOptionRow = { id: string; name: string; unit: string };
+type SupplierRow = { supplier_name: string | null };
+
 export default async function PurchasesPage({ searchParams }: { searchParams?: { date?: string } }) {
   const supabase = await createClient();
   const restaurantId = await getCurrentRestaurantId();
@@ -18,9 +31,12 @@ export default async function PurchasesPage({ searchParams }: { searchParams?: {
       .select("*, inventory_items(name)")
       .eq("restaurant_id", restaurantId)
       .eq("purchase_date", selectedDate)
-      .order("created_at", { ascending: false }),
-    supabase.from("inventory_items").select("id,name,unit").eq("restaurant_id", restaurantId).eq("active", true).order("name"),
-    supabase.from("purchases").select("supplier_name").eq("restaurant_id", restaurantId).not("supplier_name", "is", null).order("created_at", { ascending: false }).limit(80)
+      .order("created_at", { ascending: false })
+      .returns<PurchaseRow[]>(),
+    supabase.from("inventory_items").select("id,name,unit").eq("restaurant_id", restaurantId).eq("active", true).order("name")
+      .returns<InventoryOptionRow[]>(),
+    supabase.from("purchases").select("supplier_name").eq("restaurant_id", restaurantId).not("supplier_name", "is", null).order("created_at", { ascending: false })      .limit(80)
+      .returns<SupplierRow[]>()
   ]);
 
   const dailyTotal = (purchases ?? []).reduce((sum, p) => sum + p.total_cost, 0);
@@ -105,7 +121,7 @@ export default async function PurchasesPage({ searchParams }: { searchParams?: {
               {purchases?.length ? purchases.map((p) => (
                 <tr key={p.id} className="border-t border-border/60 text-muted">
                   <td className="px-4 py-3">{p.purchase_date}</td>
-                  <td className="px-4 py-3 text-foreground">{(p as { inventory_items?: { name?: string } }).inventory_items?.name ?? "-"}</td>
+                  <td className="px-4 py-3 text-foreground">{p.inventory_items?.name ?? "-"}</td>
                   <td className="px-4 py-3">{p.supplier_name ?? "-"}</td>
                   <td className="px-4 py-3">{p.quantity}</td>
                   <td className="px-4 py-3">{formatCurrency(p.unit_cost)}</td>

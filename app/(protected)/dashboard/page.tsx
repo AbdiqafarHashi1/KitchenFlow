@@ -4,6 +4,35 @@ import { formatCurrency } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
+type SalesSummaryRow = { sales_amount: number };
+type PurchaseSummaryRow = { total_cost: number };
+type AmountRow = { amount: number };
+type PayrollSummaryRow = { net_payable: number };
+type UsageCostRow = { total_cost: number | null };
+type InventoryIdRow = { id: string };
+type StaffIdRow = { id: string };
+type LowAlertRow = { id: string; name: string; current_quantity: number; min_quantity: number };
+type ItemNameRelation = { inventory_items: { name: string } | null };
+type StaffNameRelation = { staff: { full_name: string } | null };
+type RecentPurchaseRow = {
+  id: string;
+  supplier_name: string | null;
+  total_cost: number;
+  purchase_date: string;
+} & ItemNameRelation;
+type RecentAdvanceRow = {
+  id: string;
+  amount: number;
+  advance_date: string;
+  note: string | null;
+} & StaffNameRelation;
+type RecentMovementRow = {
+  id: string;
+  movement_type: "purchase" | "usage" | "waste" | "adjustment";
+  quantity: number;
+  created_at: string;
+} & ItemNameRelation;
+
 function Card({ title, value }: { title: string; value: string }) {
   return (
     <div className="card p-4">
@@ -39,43 +68,50 @@ export default async function DashboardPage({
       .from("daily_sales")
       .select("sales_amount")
       .eq("restaurant_id", restaurantId)
-      .eq("sales_date", selectedDate),
+      .eq("sales_date", selectedDate)
+      .returns<SalesSummaryRow[]>(),
 
     supabase
       .from("purchases")
       .select("total_cost")
       .eq("restaurant_id", restaurantId)
-      .eq("purchase_date", selectedDate),
+      .eq("purchase_date", selectedDate)
+      .returns<PurchaseSummaryRow[]>(),
 
     supabase
       .from("staff_advances")
       .select("amount")
       .eq("restaurant_id", restaurantId)
-      .eq("advance_date", selectedDate),
+      .eq("advance_date", selectedDate)
+      .returns<AmountRow[]>(),
 
     supabase
       .from("daily_expenses")
       .select("amount")
       .eq("restaurant_id", restaurantId)
-      .eq("expense_date", selectedDate),
+      .eq("expense_date", selectedDate)
+      .returns<AmountRow[]>(),
 
     supabase
       .from("inventory_items")
       .select("id")
       .eq("restaurant_id", restaurantId)
-      .filter("current_quantity", "lte", "min_quantity"),
+      .filter("current_quantity", "lte", "min_quantity")
+      .returns<InventoryIdRow[]>(),
 
     supabase
       .from("staff")
       .select("id")
       .eq("restaurant_id", restaurantId)
-      .eq("is_active", true),
+      .eq("is_active", true)
+      .returns<StaffIdRow[]>(),
 
     supabase
       .from("payroll_records")
       .select("net_payable")
       .eq("restaurant_id", restaurantId)
-      .eq("payment_status", "pending"),
+      .eq("payment_status", "pending")
+      .returns<PayrollSummaryRow[]>(),
 
     supabase
       .from("inventory_movements")
@@ -83,13 +119,15 @@ export default async function DashboardPage({
       .eq("restaurant_id", restaurantId)
       .eq("movement_type", "usage")
       .gte("created_at", rangeStart)
-      .lte("created_at", rangeEnd),
+      .lte("created_at", rangeEnd)
+      .returns<UsageCostRow[]>(),
 
     supabase
       .from("daily_stock_counts")
       .select("id")
       .eq("restaurant_id", restaurantId)
-      .eq("count_date", selectedDate),
+      .eq("count_date", selectedDate)
+      .returns<InventoryIdRow[]>(),
   ]);
 
   const todaySales = (sales ?? []).reduce((a, c) => a + c.sales_amount, 0);
@@ -116,28 +154,32 @@ export default async function DashboardPage({
       .select("id,supplier_name,total_cost,purchase_date,inventory_items(name)")
       .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false })
-      .limit(8),
+      .limit(8)
+      .returns<RecentPurchaseRow[]>(),
 
     supabase
       .from("staff_advances")
       .select("id,amount,advance_date,note,staff(full_name)")
       .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false })
-      .limit(8),
+      .limit(8)
+      .returns<RecentAdvanceRow[]>(),
 
     supabase
       .from("inventory_movements")
       .select("id,movement_type,quantity,created_at,inventory_items(name)")
       .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false })
-      .limit(8),
+      .limit(8)
+      .returns<RecentMovementRow[]>(),
 
     supabase
       .from("inventory_items")
       .select("id,name,current_quantity,min_quantity")
       .eq("restaurant_id", restaurantId)
       .filter("current_quantity", "lte", "min_quantity")
-      .limit(8),
+      .limit(8)
+      .returns<LowAlertRow[]>(),
   ]);
 
   return (
@@ -213,7 +255,7 @@ export default async function DashboardPage({
                   <tr key={p.id} className="border-t border-border/60 text-muted">
                     <td className="px-4 py-2">{p.purchase_date}</td>
                     <td className="px-4 py-2">
-                      {(p as { inventory_items?: { name?: string } }).inventory_items?.name ?? "Item"}
+                      {p.inventory_items?.name ?? "Item"}
                     </td>
                     <td className="px-4 py-2">{p.supplier_name ?? "Supplier"}</td>
                     <td className="px-4 py-2 text-foreground">{formatCurrency(p.total_cost)}</td>
@@ -235,7 +277,7 @@ export default async function DashboardPage({
                   <tr key={a.id} className="border-t border-border/60 text-muted">
                     <td className="px-4 py-2">{a.advance_date}</td>
                     <td className="px-4 py-2">
-                      {(a as { staff?: { full_name?: string } }).staff?.full_name ?? "Staff"}
+                      {a.staff?.full_name ?? "Staff"}
                     </td>
                     <td className="px-4 py-2">{a.note ?? "-"}</td>
                     <td className="px-4 py-2 text-foreground">{formatCurrency(a.amount)}</td>
@@ -257,7 +299,7 @@ export default async function DashboardPage({
                   <tr key={m.id} className="border-t border-border/60 text-muted">
                     <td className="px-4 py-2">{new Date(m.created_at).toLocaleString()}</td>
                     <td className="px-4 py-2">
-                      {(m as { inventory_items?: { name?: string } }).inventory_items?.name ?? "Item"}
+                      {m.inventory_items?.name ?? "Item"}
                     </td>
                     <td className="px-4 py-2">{m.movement_type}</td>
                     <td className="px-4 py-2 text-foreground">{m.quantity}</td>

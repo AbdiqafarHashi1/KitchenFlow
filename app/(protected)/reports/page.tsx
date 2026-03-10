@@ -7,6 +7,15 @@ import { getCurrentRestaurantId, getCurrentUserRole } from "@/lib/data";
 import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
 
+type SalesAmountRow = { sales_amount: number };
+type TotalCostRow = { total_cost: number };
+type AmountRow = { amount: number };
+type PayrollRow = { net_payable: number };
+type UsageRow = { total_cost: number | null; created_at: string };
+type CountDateRow = { count_date: string };
+type LowStockRow = { name: string; current_quantity: number; min_quantity: number };
+type InventoryValueRow = { current_quantity: number; average_unit_cost: number };
+
 function rangeFromPreset(preset: string) {
   const now = new Date();
   if (preset === "week") {
@@ -59,45 +68,52 @@ export default async function ReportsPage({
       .select("sales_amount")
       .eq("restaurant_id", restaurantId)
       .gte("sales_date", start)
-      .lte("sales_date", end),
+      .lte("sales_date", end)
+      .returns<SalesAmountRow[]>(),
 
     supabase
       .from("purchases")
       .select("total_cost")
       .eq("restaurant_id", restaurantId)
       .gte("purchase_date", start)
-      .lte("purchase_date", end),
+      .lte("purchase_date", end)
+      .returns<TotalCostRow[]>(),
 
     supabase
       .from("staff_advances")
       .select("amount")
       .eq("restaurant_id", restaurantId)
       .gte("advance_date", start)
-      .lte("advance_date", end),
+      .lte("advance_date", end)
+      .returns<AmountRow[]>(),
 
     supabase
       .from("daily_expenses")
       .select("amount")
       .eq("restaurant_id", restaurantId)
       .gte("expense_date", start)
-      .lte("expense_date", end),
+      .lte("expense_date", end)
+      .returns<AmountRow[]>(),
 
     supabase
       .from("inventory_items")
       .select("name,current_quantity,min_quantity")
       .eq("restaurant_id", restaurantId)
-      .filter("current_quantity", "lte", "min_quantity"),
+      .filter("current_quantity", "lte", "min_quantity")
+      .returns<LowStockRow[]>(),
 
     supabase
       .from("inventory_items")
       .select("current_quantity,average_unit_cost")
-      .eq("restaurant_id", restaurantId),
+      .eq("restaurant_id", restaurantId)
+      .returns<InventoryValueRow[]>(),
 
     supabase
       .from("payroll_records")
       .select("net_payable")
       .eq("restaurant_id", restaurantId)
-      .eq("payment_status", "pending"),
+      .eq("payment_status", "pending")
+      .returns<PayrollRow[]>(),
 
     supabase
       .from("inventory_movements")
@@ -105,14 +121,16 @@ export default async function ReportsPage({
       .eq("restaurant_id", restaurantId)
       .eq("movement_type", "usage")
       .gte("created_at", startTs)
-      .lte("created_at", endTs),
+      .lte("created_at", endTs)
+      .returns<UsageRow[]>(),
 
     supabase
       .from("daily_stock_counts")
       .select("count_date")
       .eq("restaurant_id", restaurantId)
       .gte("count_date", start)
-      .lte("count_date", end),
+      .lte("count_date", end)
+      .returns<CountDateRow[]>(),
   ]);
 
   const salesTotal = (sales ?? []).reduce((a, b) => a + b.sales_amount, 0);

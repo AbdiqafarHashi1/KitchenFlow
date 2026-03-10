@@ -7,6 +7,26 @@ import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
 import { hasPermission } from "@/lib/permissions";
 
+type StaffRow = {
+  id: string;
+  full_name: string;
+  role: string;
+  phone: string | null;
+  salary_type: "monthly" | "weekly" | "daily";
+  base_salary: number;
+};
+
+type AdvanceRow = { id: string; advance_date: string; amount: number; note: string | null };
+type PayrollRow = {
+  id: string;
+  period_start: string;
+  period_end: string;
+  base_salary: number;
+  advances_total: number;
+  net_payable: number;
+  payment_status: "pending" | "paid";
+};
+
 function getMonthRange(period: string) {
   const [year, month] = period.split("-").map(Number);
   const start = new Date(year, month - 1, 1);
@@ -23,13 +43,17 @@ export default async function StaffDetailPage({ params, searchParams }: { params
   const { start, end } = getMonthRange(currentPeriod);
   const today = new Date().toISOString().slice(0, 10);
 
-  const { data: staff } = await supabase.from("staff").select("*").eq("restaurant_id", restaurantId).eq("id", params.id).single();
-  const { data: advances } = await supabase.from("staff_advances").select("*").eq("restaurant_id", restaurantId).eq("staff_id", params.id).order("advance_date", { ascending: false });
-  const { data: payroll } = await supabase.from("payroll_records").select("*").eq("restaurant_id", restaurantId).eq("staff_id", params.id).order("period_end", { ascending: false }).limit(12);
+  const { data: rawStaff } = await supabase.from("staff").select("id,full_name,role,phone,salary_type,base_salary").eq("restaurant_id", restaurantId).eq("id", params.id).single();
+  const { data: rawAdvances } = await supabase.from("staff_advances").select("id,advance_date,amount,note").eq("restaurant_id", restaurantId).eq("staff_id", params.id).order("advance_date", { ascending: false });
+  const { data: rawPayroll } = await supabase.from("payroll_records").select("id,period_start,period_end,base_salary,advances_total,net_payable,payment_status").eq("restaurant_id", restaurantId).eq("staff_id", params.id).order("period_end", { ascending: false }).limit(12);
+
+  const staff = rawStaff as StaffRow | null;
+  const advances = (rawAdvances ?? []) as AdvanceRow[];
+  const payroll = (rawPayroll ?? []) as PayrollRow[];
 
   if (!staff) return <div className="card p-4">Staff not found.</div>;
 
-  const periodAdvances = (advances ?? []).filter((a) => a.advance_date >= start && a.advance_date <= end);
+  const periodAdvances = advances.filter((a) => a.advance_date >= start && a.advance_date <= end);
   const periodAdvancesTotal = periodAdvances.reduce((sum, advance) => sum + advance.amount, 0);
   const net = Math.max((staff.base_salary ?? 0) - periodAdvancesTotal, 0);
 
@@ -79,7 +103,7 @@ export default async function StaffDetailPage({ params, searchParams }: { params
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-black/20 text-left text-xs uppercase tracking-wide text-muted"><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Amount</th><th className="px-3 py-2">Note</th></tr></thead>
-            <tbody>{advances?.map((a) => <tr key={a.id} className="border-t border-border/60 text-muted"><td className="px-3 py-2">{a.advance_date}</td><td className="px-3 py-2 text-foreground">{formatCurrency(a.amount)}</td><td className="px-3 py-2">{a.note ?? "-"}</td></tr>)}</tbody>
+            <tbody>{advances.map((a) => <tr key={a.id} className="border-t border-border/60 text-muted"><td className="px-3 py-2">{a.advance_date}</td><td className="px-3 py-2 text-foreground">{formatCurrency(a.amount)}</td><td className="px-3 py-2">{a.note ?? "-"}</td></tr>)}</tbody>
           </table>
         </div>
       </div>
@@ -91,11 +115,11 @@ export default async function StaffDetailPage({ params, searchParams }: { params
           <table className="min-w-full text-sm">
             <thead className="bg-black/20 text-left text-xs uppercase tracking-wide text-muted"><tr><th className="px-3 py-2">Period</th><th className="px-3 py-2">Gross</th><th className="px-3 py-2">Advance deduction</th><th className="px-3 py-2">Net payable</th><th className="px-3 py-2">Status</th></tr></thead>
             <tbody>
-              {payroll?.map((p) => (
+              {payroll.map((p) => (
                 <tr key={p.id} className="border-t border-border/60 text-muted">
                   <td className="px-3 py-2">{p.period_start} → {p.period_end}</td>
-                  <td className="px-3 py-2">{formatCurrency(p.gross_salary)}</td>
-                  <td className="px-3 py-2">{formatCurrency(p.advance_deductions)}</td>
+                  <td className="px-3 py-2">{formatCurrency(p.base_salary)}</td>
+                  <td className="px-3 py-2">{formatCurrency(p.advances_total)}</td>
                   <td className="px-3 py-2 text-foreground">{formatCurrency(p.net_payable)}</td>
                   <td className="px-3 py-2">{p.payment_status}</td>
                 </tr>

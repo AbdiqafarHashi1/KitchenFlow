@@ -14,10 +14,21 @@ export default async function SettingsPage() {
   }
 
   const restaurantId = await getCurrentRestaurantId();
-  const { data: restaurant } = await supabase.from("restaurants").select("*").eq("id", restaurantId).single();
+  const { data: rawRestaurant } = await supabase
+    .from("restaurants")
+    .select("id,name,phone,address,currency")
+    .eq("id", restaurantId)
+    .single();
+
+  const restaurant = rawRestaurant as
+    | { id: string; name: string; phone: string | null; address: string | null; currency: string }
+    | null;
 
   return (
-    <form action={updateRestaurantSettings} className="card grid max-w-2xl gap-3 p-4">
+    <form action={async (formData) => {
+      "use server";
+      await updateRestaurantSettings(formData);
+    }} className="card grid max-w-2xl gap-3 p-4">
       <h2 className="text-lg font-semibold">Restaurant Settings</h2>
       <Input name="name" defaultValue={restaurant?.name} placeholder="Restaurant name" required />
       <Input name="phone" defaultValue={restaurant?.phone ?? ""} placeholder="Phone" />
