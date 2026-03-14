@@ -7,8 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { getCurrentRestaurantId, getCurrentUserRole } from "@/lib/data";
 import { createClient } from "@/lib/supabase-server";
-import { formatCurrency } from "@/lib/utils";
 import { hasPermission } from "@/lib/permissions";
+import { SearchableListSection } from "@/components/search/searchable-list-section";
 
 type Category = {
   id: string;
@@ -22,6 +22,7 @@ type InventoryItem = {
   current_quantity: number;
   min_quantity: number;
   average_unit_cost: number;
+  updated_at: string | null;
   inventory_categories?: {
     name?: string;
   } | null;
@@ -113,21 +114,17 @@ export default async function InventoryPage() {
         </div>
       )}
 
-      <div className="card overflow-hidden">
-        <div className="border-b border-border p-4">
-          <h3 className="font-medium">Inventory listing</h3>
-        </div>
-
+      <div className="card overflow-hidden p-4">
+        <h3 className="mb-3 font-medium">Inventory listing</h3>
+        <SearchableListSection placeholder="Search by item or category..." emptyMessage="No matching inventory items found.">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-black/20 text-left text-xs uppercase tracking-wide text-muted">
               <tr>
                 <th className="px-4 py-3">Item</th>
                 <th className="px-4 py-3">Category</th>
-                <th className="px-4 py-3">Unit</th>
                 <th className="px-4 py-3">Current qty</th>
-                <th className="px-4 py-3">Min qty</th>
-                <th className="px-4 py-3">Avg cost</th>
+                <th className="px-4 py-3">Last updated</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
@@ -135,29 +132,40 @@ export default async function InventoryPage() {
 
             <tbody>
               {items.map((item) => {
+                const zeroStock = item.current_quantity <= 0;
                 const low = item.current_quantity <= item.min_quantity;
+                const statusLabel = zeroStock ? "Out of stock" : low ? "Low stock" : "Healthy";
+                const statusClass = zeroStock
+                  ? "text-red-200"
+                  : low
+                    ? "text-amber-300"
+                    : "text-emerald-300";
+                const rowClass = zeroStock
+                  ? "bg-red-950/40"
+                  : low
+                    ? "bg-amber-950/20"
+                    : "";
 
                 return (
                   <tr
                     key={item.id}
-                    className={`border-t border-border/60 ${low ? "bg-red-950/20" : ""}`}
+                    data-search-text={`${item.name} ${item.inventory_categories?.name ?? "Uncategorized"}`}
+                    className={`border-t border-border/60 ${rowClass}`}
                   >
-                    <td className="px-4 py-3 text-foreground">{item.name}</td>
+                    <td className="px-4 py-3 text-foreground">
+                      <p>{item.name}</p>
+                      <p className="text-xs text-muted">{item.unit}</p>
+                    </td>
                     <td className="px-4 py-3 text-muted">
                       {item.inventory_categories?.name ?? "Uncategorized"}
                     </td>
-                    <td className="px-4 py-3 text-muted">{item.unit}</td>
                     <td className="px-4 py-3 text-foreground">{item.current_quantity}</td>
-                    <td className="px-4 py-3 text-muted">{item.min_quantity}</td>
                     <td className="px-4 py-3 text-muted">
-                      {formatCurrency(item.average_unit_cost)}
+                      {item.updated_at ? new Date(item.updated_at).toLocaleDateString() : "-"}
                     </td>
-                    <td
-                      className={`px-4 py-3 text-xs ${
-                        low ? "text-red-300" : "text-emerald-300"
-                      }`}
-                    >
-                      {low ? "Low stock" : "Healthy"}
+                    <td className={`px-4 py-3 text-xs ${statusClass}`}>
+                      {statusLabel}
+                      {zeroStock ? <span className="ml-2 rounded bg-red-900/40 px-2 py-0.5 text-[10px] uppercase">Zero</span> : null}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center gap-2">
@@ -190,6 +198,7 @@ export default async function InventoryPage() {
             </tbody>
           </table>
         </div>
+        </SearchableListSection>
       </div>
     </div>
   );

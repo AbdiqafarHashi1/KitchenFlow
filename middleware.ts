@@ -49,6 +49,7 @@ export async function middleware(request: NextRequest) {
     "/inventory",
     "/purchases",
     "/sales",
+    "/unpaid-orders",
     "/reports",
     "/settings",
     "/usage",

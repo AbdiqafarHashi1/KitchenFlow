@@ -1,6 +1,7 @@
 import { addExpense } from "@/actions/operations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { getCurrentRestaurantId } from "@/lib/data";
 import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
@@ -13,19 +14,41 @@ type ExpenseRow = {
   note: string | null;
   created_at: string;
 };
+type CategoryRow = { id: string; name: string };
+
+function parseExpenseNote(rawNote: string | null) {
+  if (!rawNote) return { itemName: "-", detailNote: "-" };
+  if (rawNote.startsWith("Item: ")) {
+    const [itemPart, ...noteParts] = rawNote.split(" | Note: ");
+    return {
+      itemName: itemPart.replace("Item: ", "").trim() || "-",
+      detailNote: noteParts.join(" | Note: ").trim() || "-",
+    };
+  }
+  return { itemName: rawNote, detailNote: "-" };
+}
 
 export default async function ExpensesPage({ searchParams }: { searchParams?: { date?: string } }) {
   const supabase = await createClient();
   const restaurantId = await getCurrentRestaurantId();
   const selectedDate = searchParams?.date ?? new Date().toISOString().slice(0, 10);
 
-  const { data: expenses } = await supabase
-    .from("daily_expenses")
-    .select("id,expense_date,category,amount,note,created_at")
-    .eq("restaurant_id", restaurantId)
-    .eq("expense_date", selectedDate)
-    .order("created_at", { ascending: false })
-    .returns<ExpenseRow[]>();
+  const [{ data: expenses }, { data: categories }] = await Promise.all([
+    supabase
+      .from("daily_expenses")
+      .select("id,expense_date,category,amount,note,created_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("expense_date", selectedDate)
+      .order("created_at", { ascending: false })
+      .returns<ExpenseRow[]>(),
+    supabase
+      .from("inventory_categories")
+      .select("id,name")
+      .eq("restaurant_id", restaurantId)
+      .eq("active", true)
+      .order("sort_order")
+      .returns<CategoryRow[]>(),
+  ]);
 
   const totalExpenses = (expenses ?? []).reduce((sum, expense) => sum + expense.amount, 0);
 
@@ -54,12 +77,23 @@ export default async function ExpensesPage({ searchParams }: { searchParams?: { 
             <p className="text-xs uppercase tracking-wide text-muted">Quick expense entry</p>
           </div>
           <div>
+            <label className="mb-1 block text-xs text-muted">Item name</label>
+            <Input name="item_name" placeholder="e.g. onions, cleaning spray" required />
+          </div>
+          <div>
             <label className="mb-1 block text-xs text-muted">Date</label>
             <Input name="expense_date" type="date" defaultValue={selectedDate} required />
           </div>
           <div>
             <label className="mb-1 block text-xs text-muted">Category</label>
-            <Input name="category" placeholder="e.g. transport" required />
+            <Select name="category" required defaultValue="">
+              <option value="">Select category</option>
+              {categories?.map((category) => (
+                <option key={category.id} value={category.name}>
+                  {category.name}
+                </option>
+              ))}
+            </Select>
           </div>
           <div>
             <label className="mb-1 block text-xs text-muted">Amount</label>
@@ -90,21 +124,23 @@ export default async function ExpensesPage({ searchParams }: { searchParams?: { 
           <table className="min-w-full text-sm">
             <thead className="bg-black/20 text-left text-xs uppercase tracking-wide text-muted">
               <tr>
-                <th className="px-4 py-3">Date/time</th>
+                <th className="px-4 py-3">Item</th>
                 <th className="px-4 py-3">Category</th>
                 <th className="px-4 py-3">Amount</th>
+                <th className="px-4 py-3">Date</th>
                 <th className="px-4 py-3">Note</th>
               </tr>
             </thead>
             <tbody>
               {expenses?.length ? expenses.map((expense) => (
                 <tr key={expense.id} className="border-t border-border/60 text-muted">
-                  <td className="px-4 py-3">{new Date(expense.created_at).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-foreground">{parseExpenseNote(expense.note).itemName}</td>
                   <td className="px-4 py-3 text-foreground">{expense.category}</td>
                   <td className="px-4 py-3 text-foreground">{formatCurrency(expense.amount)}</td>
-                  <td className="px-4 py-3">{expense.note ?? "-"}</td>
+                  <td className="px-4 py-3">{expense.expense_date}</td>
+                  <td className="px-4 py-3">{parseExpenseNote(expense.note).detailNote}</td>
                 </tr>
-              )) : <tr><td colSpan={4} className="px-4 py-8 text-center text-muted">No expenses recorded for this date.</td></tr>}
+              )) : <tr><td colSpan={5} className="px-4 py-8 text-center text-muted">No expenses recorded for this date.</td></tr>}
             </tbody>
           </table>
         </div>

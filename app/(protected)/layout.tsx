@@ -45,23 +45,25 @@ export default async function ProtectedLayout({ children }: { children: React.Re
 
   return (
     <div className="min-h-screen md:flex">
-      <Sidebar role={role} className="hidden md:block" />
-      <main className="flex-1 p-4 md:p-8">
-        <MobileNavigation
-          role={role}
-          actions={
-            <form action={signOut}>
-              <Button variant="outline" size="sm">Sign out</Button>
-            </form>
-          }
-        />
-        <div className="mb-6 hidden items-center justify-between md:flex">
+      <Sidebar role={role} className="hidden md:block print:hidden" />
+      <main className="flex-1 p-4 md:p-8 print:p-0">
+        <div className="print:hidden">
+          <MobileNavigation
+            role={role}
+            actions={
+              <form action={signOut}>
+                <Button variant="outline" size="sm">Sign out</Button>
+              </form>
+            }
+          />
+        </div>
+        <div className="mb-6 hidden items-center justify-between md:flex print:hidden">
           <h1 className="text-2xl font-semibold">Operations Dashboard</h1>
           <form action={signOut}>
             <Button variant="outline">Sign out</Button>
           </form>
         </div>
-        <div className="mb-4 md:hidden">
+        <div className="mb-4 md:hidden print:hidden">
           <h1 className="text-2xl font-semibold">Operations Dashboard</h1>
         </div>
         {children}

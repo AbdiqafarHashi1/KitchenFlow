@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
 
 type SalesAmountRow = { sales_amount: number };
+type UnpaidAmountRow = { amount: number };
 type TotalCostRow = { total_cost: number };
 type AmountRow = { amount: number };
 type PayrollRow = { net_payable: number };
@@ -54,6 +55,7 @@ export default async function ReportsPage({
 
   const [
     { data: sales },
+    { data: unpaidOrders },
     { data: purchases },
     { data: advances },
     { data: expenses },
@@ -70,6 +72,14 @@ export default async function ReportsPage({
       .gte("sales_date", start)
       .lte("sales_date", end)
       .returns<SalesAmountRow[]>(),
+
+    supabase
+      .from("unpaid_orders")
+      .select("amount")
+      .eq("restaurant_id", restaurantId)
+      .gte("date", start)
+      .lte("date", end)
+      .returns<UnpaidAmountRow[]>(),
 
     supabase
       .from("purchases")
@@ -134,14 +144,16 @@ export default async function ReportsPage({
   ]);
 
   const salesTotal = (sales ?? []).reduce((a, b) => a + b.sales_amount, 0);
+  const unpaidOrdersTotal = (unpaidOrders ?? []).reduce((a, b) => a + b.amount, 0);
+  const netSalesTotal = salesTotal - unpaidOrdersTotal;
   const purchaseTotal = (purchases ?? []).reduce((a, b) => a + b.total_cost, 0);
   const advancesTotal = (advances ?? []).reduce((a, b) => a + b.amount, 0);
   const expensesTotal = (expenses ?? []).reduce((a, b) => a + b.amount, 0);
   const payrollTotal = (payroll ?? []).reduce((a, b) => a + b.net_payable, 0);
   const usageCostTotal = (usage ?? []).reduce((a, b) => a + (b.total_cost ?? 0), 0);
   const inventoryValue = (items ?? []).reduce((a, b) => a + b.current_quantity * b.average_unit_cost, 0);
-  const dailyCashResult = salesTotal - purchaseTotal - advancesTotal - expensesTotal;
-  const dailyGrossFromUsage = salesTotal - usageCostTotal;
+  const dailyCashResult = netSalesTotal - purchaseTotal - advancesTotal - expensesTotal;
+  const dailyGrossFromUsage = netSalesTotal - usageCostTotal;
   const hasClosingCounts = (counts?.length ?? 0) > 0;
 
   return (
@@ -187,8 +199,18 @@ export default async function ReportsPage({
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="card p-4">
-          <p className="text-sm text-muted">Sales Total</p>
+          <p className="text-sm text-muted">Gross Sales Total</p>
           <p className="mt-2 text-2xl text-accent">{formatCurrency(salesTotal)}</p>
+        </div>
+
+        <div className="card p-4">
+          <p className="text-sm text-muted">Unpaid Orders Total</p>
+          <p className="mt-2 text-2xl text-accent">{formatCurrency(unpaidOrdersTotal)}</p>
+        </div>
+
+        <div className="card p-4">
+          <p className="text-sm text-muted">Net Sales</p>
+          <p className="mt-2 text-2xl text-accent">{formatCurrency(netSalesTotal)}</p>
         </div>
 
         <div className="card p-4">

@@ -13,6 +13,7 @@ export type AppPermission =
   | "usage:create"
   | "expenses:create"
   | "sales:create"
+  | "unpaid_orders:manage"
   | "reports:view"
   | "settings:manage";
 
@@ -29,6 +30,7 @@ const ROLE_PERMISSIONS: Record<AppRole, AppPermission[]> = {
     "usage:create",
     "expenses:create",
     "sales:create",
+    "unpaid_orders:manage",
     "reports:view",
     "settings:manage"
   ],
@@ -40,7 +42,8 @@ const ROLE_PERMISSIONS: Record<AppRole, AppPermission[]> = {
     "purchases:create",
     "usage:create",
     "expenses:create",
-    "sales:create"
+    "sales:create",
+    "unpaid_orders:manage"
   ]
 };
 

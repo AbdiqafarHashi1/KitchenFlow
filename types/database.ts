@@ -117,6 +117,50 @@ export type Database = {
           }
         ];
       };
+      unpaid_orders: {
+        Row: {
+          id: string;
+          restaurant_id: string;
+          date: string;
+          order_reference: string | null;
+          reason: string;
+          description: string;
+          amount: number;
+          note: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          restaurant_id: string;
+          date: string;
+          order_reference?: string | null;
+          reason: string;
+          description: string;
+          amount: number;
+          note?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          restaurant_id?: string;
+          date?: string;
+          order_reference?: string | null;
+          reason?: string;
+          description?: string;
+          amount?: number;
+          note?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "unpaid_orders_restaurant_id_fkey";
+            columns: ["restaurant_id"];
+            isOneToOne: false;
+            referencedRelation: "restaurants";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       daily_stock_counts: {
         Row: {
           id: string;
