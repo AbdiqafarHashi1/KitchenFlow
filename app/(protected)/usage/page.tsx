@@ -6,8 +6,15 @@ import { getCurrentRestaurantId } from "@/lib/data";
 import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
 import { calculateUsage } from "@/lib/usage";
+import { SearchableListSection } from "@/components/search/searchable-list-section";
 
-type UsageItemRow = { id: string; name: string; unit: string; average_unit_cost: number };
+type UsageItemRow = {
+  id: string;
+  name: string;
+  unit: string;
+  average_unit_cost: number;
+  inventory_categories: { name: string } | null;
+};
 type PurchaseQtyRow = { inventory_item_id: string; quantity: number };
 type StockCountRow = {
   id: string;
@@ -36,7 +43,7 @@ export default async function UsagePage({
   ] = await Promise.all([
     supabase
       .from("inventory_items")
-      .select("id,name,unit,average_unit_cost")
+      .select("id,name,unit,average_unit_cost,inventory_categories(name)")
       .eq("restaurant_id", restaurantId)
       .eq("active", true)
       .order("name"),
@@ -104,6 +111,7 @@ export default async function UsagePage({
         </form>
       </div>
 
+      <SearchableListSection placeholder="Search by item or category..." emptyMessage="No matching closing stock items found.">
       <div className="card overflow-hidden">
         <div className="border-b border-border p-4">
           <h3 className="font-medium">End-of-day count entry ({selectedDate})</h3>
@@ -114,15 +122,11 @@ export default async function UsagePage({
             <thead className="bg-black/20 text-left text-xs uppercase tracking-wide text-muted">
               <tr>
                 <th className="px-3 py-2">Item</th>
+                <th className="px-3 py-2">Category</th>
                 <th className="px-3 py-2">Opening</th>
-                <th className="px-3 py-2">Purchases</th>
-                <th className="px-3 py-2">Closing</th>
-                <th className="px-3 py-2">Waste</th>
-                <th className="px-3 py-2">Usage</th>
-                <th className="px-3 py-2">Unit Cost</th>
-                <th className="px-3 py-2">Usage Cost</th>
-                <th className="px-3 py-2">Note</th>
-                <th className="px-3 py-2">Action</th>
+                <th className="px-3 py-2">Purchased today</th>
+                <th className="px-3 py-2">Expected stock</th>
+                <th className="px-3 py-2">Closing stock input</th>
               </tr>
             </thead>
 
@@ -141,17 +145,28 @@ export default async function UsagePage({
                   waste,
                   averageUnitCost: item.average_unit_cost,
                 });
-
+                const expectedStock = opening + purchased - calc.usage;
+                const discrepancy = closing - expectedStock;
+                const discrepancySize = Math.abs(discrepancy);
+                const significantDiscrepancy = discrepancySize >= Math.max(0.5, expectedStock * 0.1);
                 const impossible = closing > opening + purchased;
 
                 return (
-                  <tr key={item.id} className="border-t border-border/60 text-muted align-top">
+                  <tr
+                    key={item.id}
+                    data-search-text={`${item.name} ${item.inventory_categories?.name ?? "Uncategorized"}`}
+                    className={`border-t border-border/60 text-muted align-top ${
+                      significantDiscrepancy ? "bg-amber-950/20" : ""
+                    }`}
+                  >
                     <td className="px-3 py-2 text-foreground">
                       {item.name} ({item.unit})
                     </td>
+                    <td className="px-3 py-2">{item.inventory_categories?.name ?? "Uncategorized"}</td>
                     <td className="px-3 py-2">{opening.toFixed(2)}</td>
                     <td className="px-3 py-2">{purchased.toFixed(2)}</td>
-                    <td className="px-3 py-2" colSpan={7}>
+                    <td className="px-3 py-2 text-foreground">{expectedStock.toFixed(2)}</td>
+                    <td className="px-3 py-2">
                       <ActionForm
                         action={saveDailyStockCount}
                         keepFields={[
@@ -161,17 +176,13 @@ export default async function UsagePage({
                           "purchases_quantity",
                           "average_unit_cost",
                         ]}
-                        className="grid grid-cols-[120px_100px_1fr_auto] items-start gap-2"
+                        className="space-y-2"
                       >
                         <input type="hidden" name="count_date" value={selectedDate} />
                         <input type="hidden" name="inventory_item_id" value={item.id} />
                         <input type="hidden" name="opening_quantity" value={opening} />
                         <input type="hidden" name="purchases_quantity" value={purchased} />
-                        <input
-                          type="hidden"
-                          name="average_unit_cost"
-                          value={item.average_unit_cost}
-                        />
+                        <input type="hidden" name="average_unit_cost" value={item.average_unit_cost} />
 
                         <Input
                           name="closing_quantity"
@@ -179,38 +190,45 @@ export default async function UsagePage({
                           min="0"
                           step="0.01"
                           defaultValue={String(closing)}
-                          className="h-8"
+                          className="h-8 min-w-[110px]"
                           required
                         />
 
-                        <Input
-                          name="waste_quantity"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          defaultValue={String(waste)}
-                          className="h-8"
-                        />
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          {significantDiscrepancy ? (
+                            <span className="inline-flex items-center gap-1 rounded bg-amber-900/40 px-2 py-1 text-amber-200">
+                              <span className="h-1.5 w-1.5 rounded-full bg-amber-200" />
+                              discrepancy {discrepancy > 0 ? "+" : ""}{discrepancy.toFixed(2)}
+                            </span>
+                          ) : (
+                            <span className="text-emerald-300">No discrepancy</span>
+                          )}
+                          <span className="text-muted">Usage: {calc.usage.toFixed(2)}</span>
+                          <span className="text-muted">Usage cost: {formatCurrency(Math.max(calc.usageCost, 0))}</span>
+                        </div>
 
-                        <div className="grid grid-cols-3 gap-2 text-xs text-muted">
-                          <p className={calc.usage < 0 ? "text-red-300" : "text-foreground"}>
-                            {calc.usage.toFixed(2)}
-                          </p>
-                          <p>{formatCurrency(item.average_unit_cost)}</p>
-                          <p>{formatCurrency(Math.max(calc.usageCost, 0))}</p>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <Input
+                            name="waste_quantity"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            defaultValue={String(waste)}
+                            className="h-8"
+                            placeholder="Waste"
+                          />
+                          <Input
+                            name="note"
+                            placeholder="Optional note"
+                            defaultValue={saved?.note ?? ""}
+                            className="h-8"
+                          />
                         </div>
 
                         <Button size="sm">Save</Button>
 
-                        <Input
-                          name="note"
-                          placeholder="Optional note"
-                          defaultValue={saved?.note ?? ""}
-                          className="col-span-3 h-8"
-                        />
-
                         {impossible ? (
-                          <p className="col-span-4 text-xs text-red-300">
+                          <p className="text-xs text-red-300">
                             Closing stock is higher than available stock for this day.
                           </p>
                         ) : null}
@@ -242,7 +260,11 @@ export default async function UsagePage({
             <tbody>
               {typedCounts.length ? (
                 typedCounts.map((c) => (
-                  <tr key={c.id} className="border-t border-border/60 text-muted">
+                  <tr
+                    key={c.id}
+                    data-search-text={`${typedItems.find((i) => i.id === c.inventory_item_id)?.name ?? c.inventory_item_id} ${typedItems.find((i) => i.id === c.inventory_item_id)?.inventory_categories?.name ?? "Uncategorized"}`}
+                    className="border-t border-border/60 text-muted"
+                  >
                     <td className="px-3 py-2">
                       {typedItems.find((i) => i.id === c.inventory_item_id)?.name ??
                         c.inventory_item_id}
@@ -263,6 +285,7 @@ export default async function UsagePage({
           </table>
         </div>
       </div>
+      </SearchableListSection>
     </div>
   );
 }

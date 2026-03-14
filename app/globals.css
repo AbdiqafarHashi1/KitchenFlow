@@ -26,3 +26,20 @@ select {
   background-repeat: no-repeat;
   padding-right: 2rem;
 }
+
+@media print {
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  .print-report {
+    max-width: 800px;
+    margin: 0 auto;
+    box-shadow: none !important;
+  }
+}

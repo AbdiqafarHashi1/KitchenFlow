@@ -9,6 +9,7 @@ import {
   Users,
   ClipboardCheck,
   HandCoins,
+  BadgeDollarSign,
 } from "lucide-react";
 import type { AppRole } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,7 @@ const items = [
   { href: "/usage", label: "Closing Stock", icon: ClipboardCheck, roles: ["admin", "data_entry"] as AppRole[] },
   { href: "/expenses", label: "Expenses", icon: HandCoins, roles: ["admin", "data_entry"] as AppRole[] },
   { href: "/sales", label: "Sales", icon: ReceiptText, roles: ["admin", "data_entry"] as AppRole[] },
+  { href: "/unpaid-orders", label: "Unpaid Orders", icon: BadgeDollarSign, roles: ["admin", "data_entry"] as AppRole[] },
   { href: "/reports", label: "Reports", icon: ChartNoAxesCombined, roles: ["admin"] as AppRole[] },
   { href: "/settings", label: "Settings", icon: Settings, roles: ["admin"] as AppRole[] },
 ];

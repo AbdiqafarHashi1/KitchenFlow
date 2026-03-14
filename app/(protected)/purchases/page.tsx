@@ -6,41 +6,58 @@ import { Select } from "@/components/ui/select";
 import { getCurrentRestaurantId } from "@/lib/data";
 import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
+import { SearchableListSection } from "@/components/search/searchable-list-section";
 
 type PurchaseRow = {
   id: string;
   purchase_date: string;
-  supplier_name: string | null;
   quantity: number;
   unit_cost: number;
   total_cost: number;
   note: string | null;
-  inventory_items: { name: string } | null;
+  inventory_items: {
+    name: string;
+    inventory_categories: { name: string } | null;
+  } | null;
 };
-type InventoryOptionRow = { id: string; name: string; unit: string };
-type SupplierRow = { supplier_name: string | null };
+type InventoryOptionRow = {
+  id: string;
+  name: string;
+  unit: string;
+  category_id: string | null;
+  inventory_categories: { name: string } | null;
+};
 
 export default async function PurchasesPage({ searchParams }: { searchParams?: { date?: string } }) {
   const supabase = await createClient();
   const restaurantId = await getCurrentRestaurantId();
   const selectedDate = searchParams?.date ?? new Date().toISOString().slice(0, 10);
 
-  const [{ data: purchases }, { data: items }, { data: suppliers }] = await Promise.all([
+  const [{ data: purchases }, { data: items }] = await Promise.all([
     supabase
       .from("purchases")
-      .select("*, inventory_items(name)")
+      .select("id,purchase_date,quantity,unit_cost,total_cost,note,inventory_items(name,inventory_categories(name))")
       .eq("restaurant_id", restaurantId)
       .eq("purchase_date", selectedDate)
       .order("created_at", { ascending: false })
       .returns<PurchaseRow[]>(),
-    supabase.from("inventory_items").select("id,name,unit").eq("restaurant_id", restaurantId).eq("active", true).order("name")
+    supabase
+      .from("inventory_items")
+      .select("id,name,unit,category_id,inventory_categories(name)")
+      .eq("restaurant_id", restaurantId)
+      .eq("active", true)
+      .order("name")
       .returns<InventoryOptionRow[]>(),
-    supabase.from("purchases").select("supplier_name").eq("restaurant_id", restaurantId).not("supplier_name", "is", null).order("created_at", { ascending: false })      .limit(80)
-      .returns<SupplierRow[]>()
   ]);
 
   const dailyTotal = (purchases ?? []).reduce((sum, p) => sum + p.total_cost, 0);
-  const supplierOptions = Array.from(new Set((suppliers ?? []).map((s) => s.supplier_name?.trim()).filter(Boolean))) as string[];
+  const categoryOptions = Array.from(
+    new Set(
+      (items ?? [])
+        .map((item) => item.inventory_categories?.name?.trim())
+        .filter((name): name is string => Boolean(name))
+    )
+  );
 
   return (
     <div className="space-y-6">
@@ -65,20 +82,22 @@ export default async function PurchasesPage({ searchParams }: { searchParams?: {
             <p className="text-xs uppercase tracking-wide text-muted">Quick purchase entry for {selectedDate}</p>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-muted">Inventory item</label>
-            <Select name="inventory_item_id" required>
-              <option value="">Select item</option>
-              {items?.map((i) => (
-                <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>
+            <label className="mb-1 block text-xs text-muted">Category</label>
+            <Select name="purchase_category" required defaultValue="">
+              <option value="">Select category</option>
+              {categoryOptions.map((category) => (
+                <option key={category} value={category}>{category}</option>
               ))}
             </Select>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-muted">Supplier</label>
-            <Input name="supplier_name" placeholder="Reusable supplier" list="supplier-suggestions" />
-            <datalist id="supplier-suggestions">
-              {supplierOptions.map((supplier) => <option key={supplier} value={supplier} />)}
-            </datalist>
+            <label className="mb-1 block text-xs text-muted">Inventory item</label>
+            <Select name="inventory_item_id" required>
+              <option value="">Select item</option>
+              {items?.map((i) => (
+                <option key={i.id} value={i.id}>{i.name} ({i.unit}) • {i.inventory_categories?.name ?? "Uncategorized"}</option>
+              ))}
+            </Select>
           </div>
           <div>
             <label className="mb-1 block text-xs text-muted">Quantity</label>
@@ -105,24 +124,25 @@ export default async function PurchasesPage({ searchParams }: { searchParams?: {
         </div>
       </div>
 
-      <div className="card overflow-hidden">
+      <div className="card overflow-hidden p-4">
         <div className="flex items-center justify-between border-b border-border p-4">
           <h3 className="font-medium">Purchases on {selectedDate}</h3>
           <p className="text-sm text-muted">Daily total: {formatCurrency(dailyTotal)}</p>
         </div>
+        <SearchableListSection placeholder="Search by item, category, or date..." emptyMessage="No matching purchases found.">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-black/20 text-left text-xs uppercase tracking-wide text-muted">
               <tr>
-                <th className="px-4 py-3">Date</th><th className="px-4 py-3">Item</th><th className="px-4 py-3">Supplier</th><th className="px-4 py-3">Qty</th><th className="px-4 py-3">Unit cost</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Notes</th>
+                <th className="px-4 py-3">Date</th><th className="px-4 py-3">Item</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Qty</th><th className="px-4 py-3">Unit cost</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Notes</th>
               </tr>
             </thead>
             <tbody>
               {purchases?.length ? purchases.map((p) => (
-                <tr key={p.id} className="border-t border-border/60 text-muted">
+                <tr key={p.id} data-search-text={`${p.inventory_items?.name ?? ""} ${p.inventory_items?.inventory_categories?.name ?? "Uncategorized"} ${p.purchase_date}`} className="border-t border-border/60 text-muted">
                   <td className="px-4 py-3">{p.purchase_date}</td>
                   <td className="px-4 py-3 text-foreground">{p.inventory_items?.name ?? "-"}</td>
-                  <td className="px-4 py-3">{p.supplier_name ?? "-"}</td>
+                  <td className="px-4 py-3">{p.inventory_items?.inventory_categories?.name ?? "Uncategorized"}</td>
                   <td className="px-4 py-3">{p.quantity}</td>
                   <td className="px-4 py-3">{formatCurrency(p.unit_cost)}</td>
                   <td className="px-4 py-3 text-foreground">{formatCurrency(p.total_cost)}</td>
@@ -132,6 +152,7 @@ export default async function PurchasesPage({ searchParams }: { searchParams?: {
             </tbody>
           </table>
         </div>
+        </SearchableListSection>
       </div>
     </div>
   );

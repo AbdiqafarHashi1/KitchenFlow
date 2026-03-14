@@ -63,6 +63,58 @@ export async function addSale(formData: FormData) {
   return { success: "Sales entry added" };
 }
 
+export async function addUnpaidOrder(formData: FormData) {
+  const schema = z.object({
+    date: z.string(),
+    order_reference: z.string().optional(),
+    reason: z.string().min(1),
+    description: z.string().min(1),
+    amount: num,
+    note: z.string().optional(),
+  });
+  const parsed = schema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const supabase = await createClient();
+  await requirePermission("unpaid_orders:manage");
+  const restaurant_id = await getCurrentRestaurantId();
+
+  const { error } = await supabase.from("unpaid_orders").insert({
+    ...parsed.data,
+    order_reference: parsed.data.order_reference?.trim() || null,
+    note: parsed.data.note?.trim() || null,
+    restaurant_id,
+  } as never);
+  if (error) return { error: error.message };
+
+  revalidatePath("/unpaid-orders");
+  revalidatePath("/dashboard");
+  revalidatePath("/reports");
+  return { success: "Unpaid order recorded" };
+}
+
+export async function deleteUnpaidOrder(formData: FormData) {
+  const schema = z.object({ id: z.string().uuid() });
+  const parsed = schema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const supabase = await createClient();
+  await requirePermission("unpaid_orders:manage");
+  const restaurant_id = await getCurrentRestaurantId();
+
+  const { error } = await supabase
+    .from("unpaid_orders")
+    .delete()
+    .eq("id", parsed.data.id)
+    .eq("restaurant_id", restaurant_id);
+  if (error) return { error: error.message };
+
+  revalidatePath("/unpaid-orders");
+  revalidatePath("/dashboard");
+  revalidatePath("/reports");
+  return { success: "Adjustment deleted" };
+}
+
 export async function addUsage(formData: FormData) {
   const schema = z.object({
     usage_date: z.string(),
@@ -118,6 +170,7 @@ const { error } = await supabase.from("inventory_movements").insert({
 
 export async function addExpense(formData: FormData) {
   const schema = z.object({
+    item_name: z.string().min(1),
     expense_date: z.string(),
     category: z.string().min(1),
     amount: num,
@@ -130,7 +183,17 @@ export async function addExpense(formData: FormData) {
   await requirePermission("expenses:create");
   const restaurant_id = await getCurrentRestaurantId();
 
-  const { error } = await supabase.from("daily_expenses").insert({ ...parsed.data, restaurant_id } as never);
+  const combinedNote = parsed.data.note?.trim()
+    ? `Item: ${parsed.data.item_name.trim()} | Note: ${parsed.data.note.trim()}`
+    : `Item: ${parsed.data.item_name.trim()}`;
+
+  const { error } = await supabase.from("daily_expenses").insert({
+    expense_date: parsed.data.expense_date,
+    category: parsed.data.category,
+    amount: parsed.data.amount,
+    note: combinedNote,
+    restaurant_id,
+  } as never);
   if (error) return { error: error.message };
 
   revalidatePath("/expenses");

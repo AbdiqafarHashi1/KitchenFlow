@@ -9,6 +9,7 @@ import { getCurrentRestaurantId, getCurrentUserRole } from "@/lib/data";
 import { createClient } from "@/lib/supabase-server";
 import { formatCurrency } from "@/lib/utils";
 import { hasPermission } from "@/lib/permissions";
+import { SearchableListSection } from "@/components/search/searchable-list-section";
 
 type StaffListRow = {
   id: string;
@@ -90,8 +91,9 @@ export default async function StaffPage({ searchParams }: { searchParams?: { per
   </div>
 )}
 
-      <div className="card overflow-hidden">
-        <div className="border-b border-border p-4"><h3 className="font-medium">Staff roster ({start} to {end})</h3></div>
+      <div className="card overflow-hidden p-4">
+        <h3 className="mb-3 font-medium">Staff roster ({start} to {end})</h3>
+        <SearchableListSection placeholder="Search by name, phone, or role..." emptyMessage="No matching staff found.">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-black/20 text-left text-xs uppercase tracking-wide text-muted">
@@ -101,7 +103,7 @@ export default async function StaffPage({ searchParams }: { searchParams?: { per
               {typedStaff.map((s) => {
                 const advancesTotal = advancesByStaff.get(s.id) ?? 0;
                 return (
-                  <tr key={s.id} className="border-t border-border/60 text-muted">
+                  <tr key={s.id} data-search-text={`${s.full_name} ${s.role} ${s.phone ?? ""}`} className="border-t border-border/60 text-muted">
                     <td className="px-4 py-3"><p className="text-foreground">{s.full_name}</p><p className="text-xs">{s.role} • {s.phone ?? "No phone"}</p></td>
                     <td className="px-4 py-3">{s.salary_type} {formatCurrency(s.base_salary)}</td>
                     <td className="px-4 py-3">{formatCurrency(advancesTotal)}</td>
@@ -122,6 +124,7 @@ export default async function StaffPage({ searchParams }: { searchParams?: { per
             </tbody>
           </table>
         </div>
+        </SearchableListSection>
       </div>
     </div>
   );
